@@ -55,52 +55,34 @@ async function autoColor(image: Buffer, darkening: number) {
 }
 
 /**
- * Load the Bengali font.
- *
- * We prefer a regular Bengali font for normal text and a semibold/bold
- * version for headings when available.
+ * Load a Bengali font from public/assets.
  */
-async function loadFont(
-  candidates: string[]
-): Promise<Buffer | null> {
+async function loadBengaliFont() {
+  const candidates = [
+    "NotoSansBengali-SemiBold.ttf",
+    "NotoSansBengali-Regular.ttf",
+    "NotoSansBengali-Bold.ttf",
+    "NotoSerifBengali-Bold.ttf",
+  ];
+
   for (const filename of candidates) {
     try {
       return await fs.readFile(
-        path.join(process.cwd(), "public", "assets", filename)
+        path.join(
+          process.cwd(),
+          "public",
+          "assets",
+          filename
+        )
       );
     } catch {
-      // Try next candidate.
+      // Try next font.
     }
   }
 
-  return null;
-}
-
-async function loadFonts() {
-  const regular = await loadFont([
-    "NotoSansBengali-Regular.ttf",
-    "NotoSansBengali-SemiBold.ttf",
-    "NotoSerifBengali-Regular.ttf",
-    "NotoSerifBengali-Bold.ttf",
-  ]);
-
-  const semibold = await loadFont([
-    "NotoSansBengali-SemiBold.ttf",
-    "NotoSansBengali-Bold.ttf",
-    "NotoSerifBengali-Bold.ttf",
-    "NotoSansBengali-Regular.ttf",
-  ]);
-
-  if (!regular && !semibold) {
-    throw new Error(
-      "Bengali font not found. Add NotoSansBengali-Regular.ttf and/or NotoSansBengali-SemiBold.ttf to public/assets."
-    );
-  }
-
-  return {
-    regular: regular || semibold!,
-    semibold: semibold || regular!,
-  };
+  throw new Error(
+    "Bengali font not found. Put NotoSansBengali-SemiBold.ttf inside public/assets."
+  );
 }
 
 function escapeRegExp(value: string) {
@@ -108,15 +90,21 @@ function escapeRegExp(value: string) {
 }
 
 /**
- * Creates nested span nodes instead of using flex-wrap on every text
- * fragment. This keeps the Bengali sentence flowing naturally.
+ * Creates highlighted text fragments.
+ *
+ * Every fragment is an explicit span.
+ * No null children.
  */
-function makeHighlightedNodes(
+function makeHighlightedText(
   text: string,
   phrases: string[] | null | undefined
 ) {
   const clean = (phrases || [])
-    .filter((x) => typeof x === "string" && x.trim())
+    .filter(
+      (x) =>
+        typeof x === "string" &&
+        x.trim().length > 0
+    )
     .map((x) => x.trim())
     .sort((a, b) => b.length - a.length);
 
@@ -135,79 +123,28 @@ function makeHighlightedNodes(
 
   const parts = text.split(expression);
 
-  return parts.map((part, index) => {
-    if (!part) return null;
+  return parts
+    .filter(
+      (part) =>
+        typeof part === "string" &&
+        part.length > 0
+    )
+    .map((part, index) => {
+      const highlighted = clean.includes(part);
 
-    const highlighted = clean.includes(part);
-
-    return {
-      type: "span",
-      key: `text-${index}`,
-      props: {
-        style: {
-          color: highlighted ? "#FFD400" : "#FFFFFF",
-        },
-        children: part,
-      },
-    };
-  });
-}
-
-/**
- * Rich text wrapper.
- *
- * IMPORTANT:
- * The wrapper contains exactly ONE child.
- * The nested span contains the text fragments.
- *
- * This avoids the Satori error:
- * "Expected <div> to have explicit display:flex..."
- */
-function richText(
-  text: string,
-  phrases: string[],
-  style: Record<string, any>
-) {
-  return {
-    type: "div",
-    props: {
-      style: {
-        ...style,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-      },
-
-      children: [
-        {
-          type: "span",
-          props: {
-            style: {
-              display: "flex",
-              flexDirection: "row",
-              flexWrap: "nowrap",
-              width: "100%",
-              justifyContent: "center",
-              textAlign: "center",
-            },
-
-            children: [
-              {
-                type: "span",
-                props: {
-                  style: {
-                    color: "#FFFFFF",
-                  },
-                  children: makeHighlightedNodes(text, phrases),
-                },
-              },
-            ],
+      return {
+        type: "span",
+        key: `phrase-${index}`,
+        props: {
+          style: {
+            color: highlighted
+              ? "#FFD400"
+              : "#FFFFFF",
           },
+          children: part,
         },
-      ],
-    },
-  };
+      };
+    });
 }
 
 export async function renderPoster(args: {
@@ -224,12 +161,27 @@ export async function renderPoster(args: {
     ...(args.design || {}),
   };
 
+  /*
+   * ----------------------------------------------------
+   * COLORS
+   * ----------------------------------------------------
+   */
+
   const shadow =
     d.shadow_color === "auto"
-      ? await autoColor(args.image, d.darkening || 0.08)
+      ? await autoColor(
+          args.image,
+          d.darkening || 0.08
+        )
       : valid(d.shadow_color)
       ? d.shadow_color
       : "#17234a";
+
+  /*
+   * ----------------------------------------------------
+   * LOGO
+   * ----------------------------------------------------
+   */
 
   const logoName =
     args.logo === "dark"
@@ -245,58 +197,130 @@ export async function renderPoster(args: {
     )
   );
 
-  const fonts = await loadFonts();
+  /*
+   * ----------------------------------------------------
+   * FONT
+   * ----------------------------------------------------
+   */
 
-  const image64 = args.image.toString("base64");
-  const logo64 = logo.toString("base64");
+  const fontData =
+    await loadBengaliFont();
+
+  /*
+   * ----------------------------------------------------
+   * IMAGE DATA
+   * ----------------------------------------------------
+   */
+
+  const image64 =
+    args.image.toString("base64");
+
+  const logo64 =
+    logo.toString("base64");
+
+  /*
+   * ----------------------------------------------------
+   * DESIGN VALUES
+   * ----------------------------------------------------
+   */
 
   const headlineSize = clamp(
-    Number(d.headline_font_size || 112),
+    Number(
+      d.headline_font_size || 112
+    ),
     60,
     150
   );
 
   const subheadlineSize = clamp(
-    Number(d.subheadline_font_size || 54),
+    Number(
+      d.subheadline_font_size || 54
+    ),
     32,
     80
   );
 
   const headlineWidth = clamp(
-    Number(d.headline_width || 1840),
+    Number(
+      d.headline_width || 1840
+    ),
     1000,
     1960
   );
 
   const subheadlineWidth = clamp(
-    Number(d.subheadline_width || 1840),
+    Number(
+      d.subheadline_width || 1750
+    ),
     1000,
     1960
   );
 
+  /*
+   * We deliberately use a little more vertical separation
+   * than the previous version.
+   */
+
   const headlineTop =
-    Number(d.headline_top || 420);
+    Number(
+      d.headline_top || 390
+    );
 
   const sourceTop =
-    Number(d.source_top || 250);
+    Number(
+      d.source_top || 235
+    );
 
   const logoWidth =
-    Number(d.logo_width || 220);
+    Number(
+      d.logo_width || 220
+    );
 
   const logoTop =
-    Number(d.logo_top || 60);
+    Number(
+      d.logo_top || 55
+    );
 
   const logoRight =
-    Number(d.logo_right || 80);
+    Number(
+      d.logo_right || 70
+    );
 
   const sourceFontSize =
-    Number(d.source_font_size || 34);
+    Number(
+      d.source_font_size || 32
+    );
 
   const lineHeight =
-    Number(d.line_height || 1.08);
+    Number(
+      d.line_height || 1.12
+    );
 
   const imageTop =
-    Number(d.photo_top || 0);
+    Number(
+      d.photo_top || 0
+    );
+
+  /*
+   * ----------------------------------------------------
+   * TEXT
+   * ----------------------------------------------------
+   */
+
+  const headline =
+    args.headline || "";
+
+  const subheadline =
+    args.subheadline || "";
+
+  const source =
+    args.source || "";
+
+  /*
+   * ----------------------------------------------------
+   * SATORI TREE
+   * ----------------------------------------------------
+   */
 
   const tree: any = {
     type: "div",
@@ -305,47 +329,67 @@ export async function renderPoster(args: {
       style: {
         width: 2160,
         height: 2700,
+
         display: "flex",
+
         position: "relative",
+
         overflow: "hidden",
+
         backgroundColor: shadow,
       },
 
       children: [
         /*
+         * =================================================
          * PHOTO
+         * =================================================
          */
+
         {
           type: "img",
 
           props: {
-            src: `data:image/jpeg;base64,${image64}`,
+            src:
+              `data:image/jpeg;base64,${image64}`,
 
             style: {
               position: "absolute",
+
               left: 0,
               top: imageTop,
+
               width: 2160,
-              height: 2700 - imageTop,
+              height:
+                2700 - imageTop,
+
               objectFit: "cover",
             },
           },
         },
 
         /*
+         * =================================================
          * TOP DARK PANEL
+         * =================================================
          */
+
         {
           type: "div",
 
           props: {
             style: {
               position: "absolute",
+
               left: 0,
               top: 0,
+
               width: 2160,
-              height: 1000,
-              backgroundColor: "rgba(12, 22, 52, 0.80)",
+              height: 980,
+
+              backgroundColor:
+                "rgba(10, 20, 48, 0.78)",
+
               display: "flex",
             },
 
@@ -354,19 +398,27 @@ export async function renderPoster(args: {
         },
 
         /*
-         * LOWER TEXT PROTECTION
+         * =================================================
+         * IMAGE PROTECTION
+         * =================================================
          */
+
         {
           type: "div",
 
           props: {
             style: {
               position: "absolute",
+
               left: 0,
-              top: 880,
+              top: 850,
+
               width: 2160,
               height: 850,
-              backgroundColor: "rgba(10, 16, 35, 0.30)",
+
+              backgroundColor:
+                "rgba(8, 15, 34, 0.26)",
+
               display: "flex",
             },
 
@@ -375,90 +427,108 @@ export async function renderPoster(args: {
         },
 
         /*
-         * WEBSITE
-         */
-        {
-          type: "div",
-
-          props: {
-            style: {
-              position: "absolute",
-              left: 90,
-              top: 70,
-              fontFamily: "SB",
-              fontSize: 38,
-              fontWeight: 600,
-              color: "#ffffff",
-              display: "flex",
-            },
-
-            children: "sciencebee.com.bd",
-          },
-        },
-
-        /*
+         * =================================================
          * SCIENCE BEE LOGO
+         * =================================================
          */
+
         {
           type: "img",
 
           props: {
-            src: `data:image/png;base64,${logo64}`,
+            src:
+              `data:image/png;base64,${logo64}`,
 
             style: {
               position: "absolute",
+
               right: logoRight,
               top: logoTop,
+
               width: logoWidth,
+
               height: "auto",
             },
           },
         },
 
         /*
-         * SOURCE PILL
+         * =================================================
+         * WEBSITE / BRAND
+         *
+         * Removed from here intentionally.
+         *
+         * Your previous render showed missing glyph boxes
+         * around this area. The actual Science Bee logo
+         * already provides the branding.
+         * =================================================
          */
+
+        /*
+         * =================================================
+         * SOURCE PILL
+         * =================================================
+         */
+
         {
           type: "div",
 
           props: {
             style: {
               position: "absolute",
-              left: 420,
+
+              left: 390,
               top: sourceTop,
-              width: 1320,
-              minHeight: 72,
+
+              width: 1380,
+              height: 76,
 
               display: "flex",
+
               alignItems: "center",
+
               justifyContent: "center",
 
-              borderRadius: 36,
+              borderRadius: 38,
 
               backgroundColor:
                 valid(d.source_bg)
                   ? d.source_bg
                   : "#24428E",
 
-              color: "#ffffff",
+              color: "#FFFFFF",
 
               fontFamily: "SB",
-              fontSize: sourceFontSize,
+
+              fontSize:
+                sourceFontSize,
+
               fontWeight: 600,
 
               textAlign: "center",
 
-              paddingLeft: 40,
-              paddingRight: 40,
+              paddingLeft: 45,
+              paddingRight: 45,
             },
 
-            children: `সূত্র: ${args.source || ""}`,
+            children:
+              `সূত্র: ${source}`,
           },
         },
 
         /*
-         * HEADLINE AREA
+         * =================================================
+         * HEADLINE
+         * =================================================
+         *
+         * IMPORTANT:
+         *
+         * The text fragments are inside ONE span.
+         *
+         * We do NOT use flex-wrap around each phrase.
+         * =================================================
          */
+
         {
           type: "div",
 
@@ -468,7 +538,9 @@ export async function renderPoster(args: {
 
               left:
                 1080 +
-                Number(d.headline_x || 0) -
+                Number(
+                  d.headline_x || 0
+                ) -
                 headlineWidth / 2,
 
               top: headlineTop,
@@ -476,83 +548,60 @@ export async function renderPoster(args: {
               width: headlineWidth,
 
               display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
+
+              flexDirection:
+                "column",
+
+              alignItems:
+                "center",
+
+              justifyContent:
+                "center",
 
               fontFamily: "SB",
-              fontSize: headlineSize,
+
+              fontSize:
+                headlineSize,
+
               fontWeight: 700,
 
               lineHeight,
 
               textAlign: "center",
 
-              color: "#ffffff",
+              color: "#FFFFFF",
             },
 
             children: [
-              /*
-               * HEADLINE TEXT
-               *
-               * No flex-wrap here.
-               */
-              richText(
-                args.headline || "",
-                args.phrases || [],
-                {
-                  width: headlineWidth,
-                  fontFamily: "SB",
-                  fontSize: headlineSize,
-                  fontWeight: 700,
-                  lineHeight,
-                  textAlign: "center",
-                  color: "#ffffff",
-                }
-              ),
-
-              /*
-               * SUBHEADLINE
-               */
               {
-                type: "div",
+                type: "span",
 
                 props: {
                   style: {
-                    marginTop:
-                      Number(d.subheadline_y || 28),
-
-                    width: subheadlineWidth,
-
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
+                    width:
+                      headlineWidth,
 
                     fontFamily: "SB",
-                    fontSize: subheadlineSize,
-                    fontWeight: 600,
+
+                    fontSize:
+                      headlineSize,
+
+                    fontWeight: 700,
 
                     lineHeight,
 
-                    textAlign: "center",
+                    textAlign:
+                      "center",
 
-                    color: "#ffffff",
+                    color:
+                      "#FFFFFF",
                   },
 
-                  children: [
-                    richText(
-                      args.subheadline || "",
-                      args.phrases || [],
-                      {
-                        width: subheadlineWidth,
-                        fontFamily: "SB",
-                        fontSize: subheadlineSize,
-                        fontWeight: 600,
-                        lineHeight,
-                        textAlign: "center",
-                        color: "#ffffff",
-                      }
+                  children:
+                    makeHighlightedText(
+                      headline,
+                      args.phrases || []
                     ),
-                  ],
                 },
               },
             ],
@@ -560,8 +609,100 @@ export async function renderPoster(args: {
         },
 
         /*
-         * BOTTOM SCIENCE BEE STRIP
+         * =================================================
+         * SUBHEADLINE
+         * =================================================
          */
+
+        {
+          type: "div",
+
+          props: {
+            style: {
+              position: "absolute",
+
+              left:
+                1080 -
+                subheadlineWidth / 2,
+
+              top:
+                headlineTop +
+                430 +
+                Number(
+                  d.subheadline_y || 0
+                ),
+
+              width:
+                subheadlineWidth,
+
+              display: "flex",
+
+              flexDirection:
+                "column",
+
+              alignItems:
+                "center",
+
+              justifyContent:
+                "center",
+
+              fontFamily: "SB",
+
+              fontSize:
+                subheadlineSize,
+
+              fontWeight: 600,
+
+              lineHeight: 1.16,
+
+              textAlign: "center",
+
+              color:
+                "#FFFFFF",
+            },
+
+            children: [
+              {
+                type: "span",
+
+                props: {
+                  style: {
+                    width:
+                      subheadlineWidth,
+
+                    fontFamily: "SB",
+
+                    fontSize:
+                      subheadlineSize,
+
+                    fontWeight: 600,
+
+                    lineHeight: 1.16,
+
+                    textAlign:
+                      "center",
+
+                    color:
+                      "#FFFFFF",
+                  },
+
+                  children:
+                    makeHighlightedText(
+                      subheadline,
+                      args.phrases || []
+                    ),
+                },
+              },
+            ],
+          },
+        },
+
+        /*
+         * =================================================
+         * BOTTOM BRAND STRIP
+         * =================================================
+         */
+
         {
           type: "div",
 
@@ -576,18 +717,27 @@ export async function renderPoster(args: {
               height: 105,
 
               display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
 
-              backgroundColor: "#172F75",
+              alignItems:
+                "center",
 
-              color: "#ffffff",
+              justifyContent:
+                "center",
+
+              backgroundColor:
+                "#173579",
+
+              color:
+                "#FFFFFF",
 
               fontFamily: "SB",
+
               fontSize: 32,
+
               fontWeight: 600,
 
-              textAlign: "center",
+              textAlign:
+                "center",
             },
 
             children:
@@ -598,46 +748,74 @@ export async function renderPoster(args: {
     },
   };
 
-  const svg = await satori(tree, {
-    width: 2160,
-    height: 2700,
+  /*
+   * ----------------------------------------------------
+   * SATORI
+   * ----------------------------------------------------
+   */
 
-    fonts: [
-      {
-        name: "SB",
-        data: fonts.regular,
-        weight: 400,
-        style: "normal",
-      },
-      {
-        name: "SB",
-        data: fonts.regular,
-        weight: 500,
-        style: "normal",
-      },
-      {
-        name: "SB",
-        data: fonts.semibold,
-        weight: 600,
-        style: "normal",
-      },
-      {
-        name: "SB",
-        data: fonts.semibold,
-        weight: 700,
-        style: "normal",
-      },
-    ],
+  const svg = await satori(
+    tree,
+    {
+      width: 2160,
 
-    embedFont: true,
+      height: 2700,
 
-    pointScaleFactor: 1,
-  });
+      fonts: [
+        {
+          name: "SB",
+
+          data: fontData,
+
+          weight: 400,
+
+          style: "normal",
+        },
+
+        {
+          name: "SB",
+
+          data: fontData,
+
+          weight: 500,
+
+          style: "normal",
+        },
+
+        {
+          name: "SB",
+
+          data: fontData,
+
+          weight: 600,
+
+          style: "normal",
+        },
+
+        {
+          name: "SB",
+
+          data: fontData,
+
+          weight: 700,
+
+          style: "normal",
+        },
+      ],
+    }
+  );
+
+  /*
+   * ----------------------------------------------------
+   * RESVG → PNG
+   * ----------------------------------------------------
+   */
 
   return Buffer.from(
     new Resvg(svg, {
       fitTo: {
         mode: "width",
+
         value: 2160,
       },
     })
