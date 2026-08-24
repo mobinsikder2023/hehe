@@ -1,150 +1,152 @@
 import fs from "fs/promises";
 import path from "path";
 import sharp from "sharp";
-import satori from "satori";
 import { Resvg } from "@resvg/resvg-js";
 import { DEFAULT_DESIGN, Design } from "./types";
 
-function valid(hex: string) {
-  return /^#[0-9a-f]{6}$/i.test(hex);
+const W = 2160;
+const H = 2700;
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
 }
 
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value));
+function validHex(value: string) {
+  return /^#[0-9a-f]{6}$/i.test(value);
 }
 
-async function autoColor(image: Buffer, darkening: number) {
-  try {
-    const { data, info } = await sharp(image)
-      .resize(80, 80, {
-        fit: "cover",
-        position: "top",
-      })
-      .raw()
-      .toBuffer({ resolveWithObject: true });
-
-    let r = 0;
-    let g = 0;
-    let b = 0;
-    let n = 0;
-
-    for (let i = 0; i < data.length; i += info.channels) {
-      r += data[i];
-      g += data[i + 1];
-      b += data[i + 2];
-      n++;
-    }
-
-    const factor = Math.max(0.4, 1 - darkening);
-
-    return (
-      "#" +
-      Math.round((r / n) * factor)
-        .toString(16)
-        .padStart(2, "0") +
-      Math.round((g / n) * factor)
-        .toString(16)
-        .padStart(2, "0") +
-      Math.round((b / n) * factor)
-        .toString(16)
-        .padStart(2, "0")
-    );
-  } catch {
-    return "#17234a";
-  }
+function esc(value: string) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
 
-/**
- * Load a Bengali font from public/assets.
+function rgba(hex: string, alpha: number) {
+  const h = hex.replace("#", "");
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+/*
+ * IMPORTANT:
+ * The old renderer used Satori for the poster itself.
+ * Satori currently documents that advanced typography features such as
+ * kerning/ligatures are not supported. Bengali is an Indic complex script,
+ * so production rendering is more reliable when Resvg handles the SVG text
+ * directly with the actual Bengali font loaded into its font database.
  */
-async function loadBengaliFont() {
-  const candidates = [
-    "NotoSansBengali-SemiBold.ttf",
-    "NotoSansBengali-Regular.ttf",
-    "NotoSansBengali-Bold.ttf",
-    "NotoSerifBengali-Bold.ttf",
-  ];
 
-  for (const filename of candidates) {
-    try {
-      return await fs.readFile(
-        path.join(
-          process.cwd(),
-          "public",
-          "assets",
-          filename
-        )
-      );
-    } catch {
-      // Try next font.
+function bengaliUnits(text: string) {
+  let units = 0;
+  for (const ch of text) {
+    if (ch === " ") units += 0.28;
+    else if (/\d/.test(ch)) units += 0.48;
+    else if (/[A-Za-z]/.test(ch)) units += 0.50;
+    else if (ch >= "\u0980" && ch <= "\u09FF") units += 0.55;
+    else units += 0.45;
+  }
+  return units;
+}
+
+function wrapWords(text: string, maxUnits: number) {
+  const words = String(text || "").trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+
+  const lines: string[] = [];
+  let current = "";
+  let units = 0;
+
+  for (const word of words) {
+    const wordUnits = bengaliUnits(word);
+    const nextUnits = current ? units + 0.28 + wordUnits : wordUnits;
+
+    if (current && nextUnits > maxUnits) {
+      lines.push(current);
+      current = word;
+      units = wordUnits;
+    } else {
+      current = current ? `${current} ${word}` : word;
+      units = nextUnits;
     }
   }
 
-  throw new Error(
-    "Bengali font not found. Put NotoSansBengali-SemiBold.ttf inside public/assets."
-  );
+  if (current) lines.push(current);
+  return lines;
 }
 
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/**
- * Creates highlighted text fragments.
- *
- * Every fragment is an explicit span.
- * No null children.
- */
-function makeHighlightedText(
+function fitLines(
   text: string,
-  phrases: string[] | null | undefined
+  width: number,
+  preferredSize: number,
+  minSize: number,
+  maxLines: number
 ) {
+  for (let size = preferredSize; size >= minSize; size -= 2) {
+    const maxUnits = width / size;
+    const lines = wrapWords(text, maxUnits);
+    if (lines.length <= maxLines) {
+      return { size, lines };
+    }
+  }
+
+  const size = minSize;
+  const lines = wrapWords(text, width / size);
+  return { size, lines };
+}
+
+function splitHighlight(text: string, phrases: string[]) {
   const clean = (phrases || [])
-    .filter(
-      (x) =>
-        typeof x === "string" &&
-        x.trim().length > 0
-    )
-    .map((x) => x.trim())
+    .map((x) => String(x || "").trim())
+    .filter(Boolean)
     .sort((a, b) => b.length - a.length);
 
-  if (!text) {
-    return "";
+  if (!clean.length || !text) {
+    return [{ text, yellow: false }];
   }
 
-  if (!clean.length) {
-    return text;
-  }
-
-  const expression = new RegExp(
-    `(${clean.map(escapeRegExp).join("|")})`,
-    "g"
+  const escaped = clean.map((p) =>
+    p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
   );
+  const re = new RegExp(`(${escaped.join("|")})`, "g");
+  const pieces = text.split(re);
 
-  const parts = text.split(expression);
+  return pieces.filter(Boolean).map((piece) => ({
+    text: piece,
+    yellow: clean.includes(piece),
+  }));
+}
 
-  return parts
-    .filter(
+function lineTextSvg(
+  text: string,
+  phrases: string[],
+  x: number,
+  y: number,
+  fontSize: number,
+  fill = "#ffffff"
+) {
+  const parts = splitHighlight(text, phrases);
+  const tspans = parts
+    .map(
       (part) =>
-        typeof part === "string" &&
-        part.length > 0
+        `<tspan fill="${part.yellow ? "#ffd400" : fill}">${esc(
+          part.text
+        )}</tspan>`
     )
-    .map((part, index) => {
-      const highlighted = clean.includes(part);
+    .join("");
 
-      return {
-        type: "span",
-        key: `phrase-${index}`,
-        props: {
-          style: {
-            color: highlighted
-              ? "#FFD400"
-              : "#FFFFFF",
-          },
-          children: part,
-        },
-      };
-    });
+  return `<text x="${x}" y="${y}" text-anchor="middle" font-family="Noto Serif Bengali" font-size="${fontSize}" font-weight="700" fill="${fill}" style="paint-order:stroke;stroke:rgba(0,0,0,.22);stroke-width:2px">${tspans}</text>`;
+}
+
+async function prepareJpeg(image: Buffer) {
+  return sharp(image)
+    .rotate()
+    .jpeg({ quality: 94, chromaSubsampling: "4:4:4" })
+    .toBuffer();
 }
 
 export async function renderPoster(args: {
@@ -161,665 +163,216 @@ export async function renderPoster(args: {
     ...(args.design || {}),
   };
 
-  /*
-   * ----------------------------------------------------
-   * COLORS
-   * ----------------------------------------------------
-   */
-
   const shadow =
-    d.shadow_color === "auto"
-      ? await autoColor(
-          args.image,
-          d.darkening || 0.08
-        )
-      : valid(d.shadow_color)
+    d.shadow_color && d.shadow_color !== "auto" && validHex(d.shadow_color)
       ? d.shadow_color
       : "#17234a";
 
-  /*
-   * ----------------------------------------------------
-   * LOGO
-   * ----------------------------------------------------
-   */
+  const fontPath = path.join(
+    process.cwd(),
+    "public/assets/NotoSerifBengali-Bold.ttf"
+  );
 
   const logoName =
-    args.logo === "dark"
-      ? "logo_dark.png"
-      : "logo_light.png";
+    args.logo === "dark" ? "logo_dark.png" : "logo_light.png";
+  const logoPath = path.join(process.cwd(), "public/assets", logoName);
 
-  const logo = await fs.readFile(
-    path.join(
-      process.cwd(),
-      "public",
-      "assets",
-      logoName
-    )
+  const [jpeg, logo] = await Promise.all([
+    prepareJpeg(args.image),
+    fs.readFile(logoPath),
+  ]);
+
+  const image64 = jpeg.toString("base64");
+  const logo64 = logo.toString("base64");
+
+  const headlineWidth = clamp(d.headline_width || 1840, 1200, 1980);
+  const subWidth = clamp(d.subheadline_width || 1840, 1200, 1980);
+
+  const headlineFit = fitLines(
+    args.headline || "",
+    headlineWidth - 80,
+    d.headline_font_size || 112,
+    76,
+    2
   );
+
+  const subFit = fitLines(
+    args.subheadline || "",
+    subWidth - 80,
+    d.subheadline_font_size || 50,
+    34,
+    2
+  );
+
+  const headlineLineHeight = Math.round(headlineFit.size * 1.02);
+  const subLineHeight = Math.round(subFit.size * 1.15);
+
+  const headlineBlockHeight =
+    Math.max(1, headlineFit.lines.length) * headlineLineHeight;
+
+  const subBlockHeight =
+    Math.max(1, subFit.lines.length) * subLineHeight;
 
   /*
-   * ----------------------------------------------------
-   * FONT
-   * ----------------------------------------------------
+   * Stable editorial layout:
+   * logo/domain at top, source pill above headline, headline below it,
+   * supporting line below headline, photo remains dominant.
    */
-
-  const fontData =
-    await loadBengaliFont();
-
-  /*
-   * ----------------------------------------------------
-   * IMAGE DATA
-   * ----------------------------------------------------
-   */
-
-  const image64 =
-    args.image.toString("base64");
-
-  const logo64 =
-    logo.toString("base64");
-
-  /*
-   * ----------------------------------------------------
-   * DESIGN VALUES
-   * ----------------------------------------------------
-   */
-
-  const headlineSize = clamp(
-    Number(
-      d.headline_font_size || 112
-    ),
-    60,
-    150
-  );
-
-  const subheadlineSize = clamp(
-    Number(
-      d.subheadline_font_size || 54
-    ),
-    32,
-    80
-  );
-
-  const headlineWidth = clamp(
-    Number(
-      d.headline_width || 1840
-    ),
-    1000,
-    1960
-  );
-
-  const subheadlineWidth = clamp(
-    Number(
-      d.subheadline_width || 1750
-    ),
-    1000,
-    1960
-  );
-
-  /*
-   * We deliberately use a little more vertical separation
-   * than the previous version.
-   */
+  const topPadding = 95;
+  const sourceY = 250;
+  const sourceH = 82;
 
   const headlineTop =
-    Number(
-      d.headline_top || 390
-    );
+    d.composition === "text_first"
+      ? 470
+      : clamp(
+          d.headline_top || 410,
+          350,
+          650
+        );
 
-  const sourceTop =
-    Number(
-      d.source_top || 235
-    );
+  const sourceText = `সূত্র: ${args.source || ""}`;
+  const sourceWidth = clamp(520 + bengaliUnits(sourceText) * 28, 620, 1500);
 
-  const logoWidth =
-    Number(
-      d.logo_width || 220
-    );
+  const subTop =
+    headlineTop +
+    headlineBlockHeight +
+    Math.max(24, d.subheadline_y || 28);
 
-  const logoTop =
-    Number(
-      d.logo_top || 55
-    );
-
-  const logoRight =
-    Number(
-      d.logo_right || 70
-    );
-
-  const sourceFontSize =
-    Number(
-      d.source_font_size || 32
-    );
-
-  const lineHeight =
-    Number(
-      d.line_height || 1.12
-    );
-
-  const imageTop =
-    Number(
-      d.photo_top || 0
-    );
+  const footerH = 105;
+  const footerY = H - footerH;
 
   /*
-   * ----------------------------------------------------
-   * TEXT
-   * ----------------------------------------------------
+   * Keep the photograph visible. Only the upper editorial region receives
+   * the dark gradient needed for text contrast.
    */
-
-  const headline =
-    args.headline || "";
-
-  const subheadline =
-    args.subheadline || "";
-
-  const source =
-    args.source || "";
-
-  /*
-   * ----------------------------------------------------
-   * SATORI TREE
-   * ----------------------------------------------------
-   */
-
-  const tree: any = {
-    type: "div",
-
-    props: {
-      style: {
-        width: 2160,
-        height: 2700,
-
-        display: "flex",
-
-        position: "relative",
-
-        overflow: "hidden",
-
-        backgroundColor: shadow,
-      },
-
-      children: [
-        /*
-         * =================================================
-         * PHOTO
-         * =================================================
-         */
-
-        {
-          type: "img",
-
-          props: {
-            src:
-              `data:image/jpeg;base64,${image64}`,
-
-            style: {
-              position: "absolute",
-
-              left: 0,
-              top: imageTop,
-
-              width: 2160,
-              height:
-                2700 - imageTop,
-
-              objectFit: "cover",
-            },
-          },
-        },
-
-        /*
-         * =================================================
-         * TOP DARK PANEL
-         * =================================================
-         */
-
-        {
-          type: "div",
-
-          props: {
-            style: {
-              position: "absolute",
-
-              left: 0,
-              top: 0,
-
-              width: 2160,
-              height: 980,
-
-              backgroundColor:
-                "rgba(10, 20, 48, 0.78)",
-
-              display: "flex",
-            },
-
-            children: [],
-          },
-        },
-
-        /*
-         * =================================================
-         * IMAGE PROTECTION
-         * =================================================
-         */
-
-        {
-          type: "div",
-
-          props: {
-            style: {
-              position: "absolute",
-
-              left: 0,
-              top: 850,
-
-              width: 2160,
-              height: 850,
-
-              backgroundColor:
-                "rgba(8, 15, 34, 0.26)",
-
-              display: "flex",
-            },
-
-            children: [],
-          },
-        },
-
-        /*
-         * =================================================
-         * SCIENCE BEE LOGO
-         * =================================================
-         */
-
-        {
-          type: "img",
-
-          props: {
-            src:
-              `data:image/png;base64,${logo64}`,
-
-            style: {
-              position: "absolute",
-
-              right: logoRight,
-              top: logoTop,
-
-              width: logoWidth,
-
-              height: "auto",
-            },
-          },
-        },
-
-        /*
-         * =================================================
-         * WEBSITE / BRAND
-         *
-         * Removed from here intentionally.
-         *
-         * Your previous render showed missing glyph boxes
-         * around this area. The actual Science Bee logo
-         * already provides the branding.
-         * =================================================
-         */
-
-        /*
-         * =================================================
-         * SOURCE PILL
-         * =================================================
-         */
-
-        {
-          type: "div",
-
-          props: {
-            style: {
-              position: "absolute",
-
-              left: 390,
-              top: sourceTop,
-
-              width: 1380,
-              height: 76,
-
-              display: "flex",
-
-              alignItems: "center",
-
-              justifyContent: "center",
-
-              borderRadius: 38,
-
-              backgroundColor:
-                valid(d.source_bg)
-                  ? d.source_bg
-                  : "#24428E",
-
-              color: "#FFFFFF",
-
-              fontFamily: "SB",
-
-              fontSize:
-                sourceFontSize,
-
-              fontWeight: 600,
-
-              textAlign: "center",
-
-              paddingLeft: 45,
-              paddingRight: 45,
-            },
-
-            children:
-              `সূত্র: ${source}`,
-          },
-        },
-
-        /*
-         * =================================================
-         * HEADLINE
-         * =================================================
-         *
-         * IMPORTANT:
-         *
-         * The text fragments are inside ONE span.
-         *
-         * We do NOT use flex-wrap around each phrase.
-         * =================================================
-         */
-
-        {
-          type: "div",
-
-          props: {
-            style: {
-              position: "absolute",
-
-              left:
-                1080 +
-                Number(
-                  d.headline_x || 0
-                ) -
-                headlineWidth / 2,
-
-              top: headlineTop,
-
-              width: headlineWidth,
-
-              display: "flex",
-
-              flexDirection:
-                "column",
-
-              alignItems:
-                "center",
-
-              justifyContent:
-                "center",
-
-              fontFamily: "SB",
-
-              fontSize:
-                headlineSize,
-
-              fontWeight: 700,
-
-              lineHeight,
-
-              textAlign: "center",
-
-              color: "#FFFFFF",
-            },
-
-            children: [
-              {
-                type: "span",
-
-                props: {
-                  style: {
-                    width:
-                      headlineWidth,
-
-                    fontFamily: "SB",
-
-                    fontSize:
-                      headlineSize,
-
-                    fontWeight: 700,
-
-                    lineHeight,
-
-                    textAlign:
-                      "center",
-
-                    color:
-                      "#FFFFFF",
-                  },
-
-                  children:
-                    makeHighlightedText(
-                      headline,
-                      args.phrases || []
-                    ),
-                },
-              },
-            ],
-          },
-        },
-
-        /*
-         * =================================================
-         * SUBHEADLINE
-         * =================================================
-         */
-
-        {
-          type: "div",
-
-          props: {
-            style: {
-              position: "absolute",
-
-              left:
-                1080 -
-                subheadlineWidth / 2,
-
-              top:
-                headlineTop +
-                430 +
-                Number(
-                  d.subheadline_y || 0
-                ),
-
-              width:
-                subheadlineWidth,
-
-              display: "flex",
-
-              flexDirection:
-                "column",
-
-              alignItems:
-                "center",
-
-              justifyContent:
-                "center",
-
-              fontFamily: "SB",
-
-              fontSize:
-                subheadlineSize,
-
-              fontWeight: 600,
-
-              lineHeight: 1.16,
-
-              textAlign: "center",
-
-              color:
-                "#FFFFFF",
-            },
-
-            children: [
-              {
-                type: "span",
-
-                props: {
-                  style: {
-                    width:
-                      subheadlineWidth,
-
-                    fontFamily: "SB",
-
-                    fontSize:
-                      subheadlineSize,
-
-                    fontWeight: 600,
-
-                    lineHeight: 1.16,
-
-                    textAlign:
-                      "center",
-
-                    color:
-                      "#FFFFFF",
-                  },
-
-                  children:
-                    makeHighlightedText(
-                      subheadline,
-                      args.phrases || []
-                    ),
-                },
-              },
-            ],
-          },
-        },
-
-        /*
-         * =================================================
-         * BOTTOM BRAND STRIP
-         * =================================================
-         */
-
-        {
-          type: "div",
-
-          props: {
-            style: {
-              position: "absolute",
-
-              left: 0,
-              bottom: 0,
-
-              width: 2160,
-              height: 105,
-
-              display: "flex",
-
-              alignItems:
-                "center",
-
-              justifyContent:
-                "center",
-
-              backgroundColor:
-                "#173579",
-
-              color:
-                "#FFFFFF",
-
-              fontFamily: "SB",
-
-              fontSize: 32,
-
-              fontWeight: 600,
-
-              textAlign:
-                "center",
-            },
-
-            children:
-              "বিজ্ঞান, প্রযুক্তি ও গবেষণা",
-          },
-        },
-      ],
+  const topGradient = `
+    <linearGradient id="topFade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${esc(shadow)}" stop-opacity="0.98"/>
+      <stop offset="24%" stop-color="${esc(shadow)}" stop-opacity="0.90"/>
+      <stop offset="48%" stop-color="${esc(shadow)}" stop-opacity="0.68"/>
+      <stop offset="72%" stop-color="${esc(shadow)}" stop-opacity="0.24"/>
+      <stop offset="100%" stop-color="${esc(shadow)}" stop-opacity="0"/>
+    </linearGradient>
+  `;
+
+  const headlineSvg = headlineFit.lines
+    .map((line, i) =>
+      lineTextSvg(
+        line,
+        args.phrases || [],
+        W / 2,
+        headlineTop + i * headlineLineHeight + headlineFit.size,
+        headlineFit.size
+      )
+    )
+    .join("");
+
+  const subSvg = subFit.lines
+    .map((line, i) =>
+      lineTextSvg(
+        line,
+        args.phrases || [],
+        W / 2,
+        subTop + i * subLineHeight + subFit.size,
+        subFit.size,
+        "#ffffff"
+      )
+    )
+    .join("");
+
+  const sourceFont = clamp(d.source_font_size || 32, 26, 40);
+
+  const svg = `
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  <defs>
+    ${topGradient}
+    <linearGradient id="photoBottom" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#17234a" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#17234a" stop-opacity="0.16"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="${W}" height="${H}" fill="${shadow}"/>
+
+  <image
+    href="data:image/jpeg;base64,${image64}"
+    x="0" y="0" width="${W}" height="${H}"
+    preserveAspectRatio="xMidYMid slice"
+  />
+
+  <rect x="0" y="0" width="${W}" height="1120" fill="url(#topFade)"/>
+  <rect x="0" y="${H - 620}" width="${W}" height="620" fill="url(#photoBottom)"/>
+
+  <image
+    href="data:image/png;base64,${logo64}"
+    x="${W - (d.logo_right || 100) - (d.logo_width || 220)}"
+    y="${d.logo_top || topPadding}"
+    width="${d.logo_width || 220}"
+    preserveAspectRatio="xMidYMid meet"
+  />
+
+  <text
+    x="${d.logo_right || 100}"
+    y="${(d.logo_top || topPadding) + 44}"
+    font-family="Noto Serif Bengali"
+    font-size="34"
+    font-weight="700"
+    fill="#ffffff"
+    opacity="0.96"
+    style="paint-order:stroke;stroke:rgba(0,0,0,.22);stroke-width:1px"
+  >sciencebee.com.bd</text>
+
+  <rect
+    x="${W / 2 - sourceWidth / 2}"
+    y="${sourceY}"
+    width="${sourceWidth}"
+    height="${sourceH}"
+    rx="${sourceH / 2}"
+    fill="${d.source_bg && d.source_bg !== "transparent" && validHex(d.source_bg) ? d.source_bg : "#24428e"}"
+    opacity="0.96"
+  />
+
+  <text
+    x="${W / 2}"
+    y="${sourceY + 53}"
+    text-anchor="middle"
+    font-family="Noto Serif Bengali"
+    font-size="${sourceFont}"
+    font-weight="700"
+    fill="#ffffff"
+  >${esc(sourceText)}</text>
+
+  ${headlineSvg}
+  ${subSvg}
+
+  <rect x="0" y="${footerY}" width="${W}" height="${footerH}" fill="#24428e"/>
+
+  <text
+    x="${W / 2}"
+    y="${footerY + 66}"
+    text-anchor="middle"
+    font-family="Noto Serif Bengali"
+    font-size="30"
+    font-weight="700"
+    fill="#ffffff"
+  >বিজ্ঞান, প্রযুক্তি ও গবেষণা</text>
+</svg>`;
+
+  const resvg = new Resvg(svg, {
+    fitTo: { mode: "width", value: W },
+    font: {
+      fontFiles: [fontPath],
+      loadSystemFonts: false,
+      defaultFontFamily: "Noto Serif Bengali",
+      sansSerifFamily: "Noto Serif Bengali",
+      serifFamily: "Noto Serif Bengali",
     },
-  };
+    textRendering: 2,
+    shapeRendering: 2,
+  });
 
-  /*
-   * ----------------------------------------------------
-   * SATORI
-   * ----------------------------------------------------
-   */
-
-  const svg = await satori(
-    tree,
-    {
-      width: 2160,
-
-      height: 2700,
-
-      fonts: [
-        {
-          name: "SB",
-
-          data: fontData,
-
-          weight: 400,
-
-          style: "normal",
-        },
-
-        {
-          name: "SB",
-
-          data: fontData,
-
-          weight: 500,
-
-          style: "normal",
-        },
-
-        {
-          name: "SB",
-
-          data: fontData,
-
-          weight: 600,
-
-          style: "normal",
-        },
-
-        {
-          name: "SB",
-
-          data: fontData,
-
-          weight: 700,
-
-          style: "normal",
-        },
-      ],
-    }
-  );
-
-  /*
-   * ----------------------------------------------------
-   * RESVG → PNG
-   * ----------------------------------------------------
-   */
-
-  return Buffer.from(
-    new Resvg(svg, {
-      fitTo: {
-        mode: "width",
-
-        value: 2160,
-      },
-    })
-      .render()
-      .asPng()
-  );
+  return Buffer.from(resvg.render().asPng());
 }
