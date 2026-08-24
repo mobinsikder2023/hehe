@@ -671,7 +671,7 @@ export async function renderPoster(args: {
                     textShadow:
                       "0 3px 8px rgba(0,0,0,0.55)",
 
-                    wordBreak: "normal",
+                    
                   },
 
                   children: spans(
