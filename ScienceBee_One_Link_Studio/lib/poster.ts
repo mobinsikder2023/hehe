@@ -463,7 +463,7 @@ const d: Design = {
                       fade + 1000
                     ),
 
-              backgroundImage: gradient,
+            backgroundColor: "transparent",
 
             
             },
