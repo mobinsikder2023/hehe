@@ -54,33 +54,64 @@ async function autoColor(image: Buffer, darkening: number) {
   }
 }
 
-async function loadBengaliFont() {
-  const candidates = [
-    "NotoSansBengali-SemiBold.ttf",
-    "NotoSansBengali-Regular.ttf",
-    "NotoSerifBengali-Bold.ttf",
-  ];
-
+/**
+ * Load the Bengali font.
+ *
+ * We prefer a regular Bengali font for normal text and a semibold/bold
+ * version for headings when available.
+ */
+async function loadFont(
+  candidates: string[]
+): Promise<Buffer | null> {
   for (const filename of candidates) {
     try {
       return await fs.readFile(
         path.join(process.cwd(), "public", "assets", filename)
       );
     } catch {
-      // Try the next font.
+      // Try next candidate.
     }
   }
 
-  throw new Error(
-    "Bengali font not found. Add NotoSansBengali-SemiBold.ttf to public/assets."
-  );
+  return null;
+}
+
+async function loadFonts() {
+  const regular = await loadFont([
+    "NotoSansBengali-Regular.ttf",
+    "NotoSansBengali-SemiBold.ttf",
+    "NotoSerifBengali-Regular.ttf",
+    "NotoSerifBengali-Bold.ttf",
+  ]);
+
+  const semibold = await loadFont([
+    "NotoSansBengali-SemiBold.ttf",
+    "NotoSansBengali-Bold.ttf",
+    "NotoSerifBengali-Bold.ttf",
+    "NotoSansBengali-Regular.ttf",
+  ]);
+
+  if (!regular && !semibold) {
+    throw new Error(
+      "Bengali font not found. Add NotoSansBengali-Regular.ttf and/or NotoSansBengali-SemiBold.ttf to public/assets."
+    );
+  }
+
+  return {
+    regular: regular || semibold!,
+    semibold: semibold || regular!,
+  };
 }
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function makeHighlightedText(
+/**
+ * Creates nested span nodes instead of using flex-wrap on every text
+ * fragment. This keeps the Bengali sentence flowing naturally.
+ */
+function makeHighlightedNodes(
   text: string,
   phrases: string[] | null | undefined
 ) {
@@ -89,9 +120,13 @@ function makeHighlightedText(
     .map((x) => x.trim())
     .sort((a, b) => b.length - a.length);
 
-  if (!text) return "";
+  if (!text) {
+    return "";
+  }
 
-  if (!clean.length) return text;
+  if (!clean.length) {
+    return text;
+  }
 
   const expression = new RegExp(
     `(${clean.map(escapeRegExp).join("|")})`,
@@ -100,21 +135,79 @@ function makeHighlightedText(
 
   const parts = text.split(expression);
 
-  return parts.map((part) => {
-    if (clean.includes(part)) {
-      return {
-        type: "span",
-        props: {
-          style: {
-            color: "#FFD400",
-          },
-          children: part,
-        },
-      };
-    }
+  return parts.map((part, index) => {
+    if (!part) return null;
 
-    return part;
+    const highlighted = clean.includes(part);
+
+    return {
+      type: "span",
+      key: `text-${index}`,
+      props: {
+        style: {
+          color: highlighted ? "#FFD400" : "#FFFFFF",
+        },
+        children: part,
+      },
+    };
   });
+}
+
+/**
+ * Rich text wrapper.
+ *
+ * IMPORTANT:
+ * The wrapper contains exactly ONE child.
+ * The nested span contains the text fragments.
+ *
+ * This avoids the Satori error:
+ * "Expected <div> to have explicit display:flex..."
+ */
+function richText(
+  text: string,
+  phrases: string[],
+  style: Record<string, any>
+) {
+  return {
+    type: "div",
+    props: {
+      style: {
+        ...style,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+      },
+
+      children: [
+        {
+          type: "span",
+          props: {
+            style: {
+              display: "flex",
+              flexDirection: "row",
+              flexWrap: "nowrap",
+              width: "100%",
+              justifyContent: "center",
+              textAlign: "center",
+            },
+
+            children: [
+              {
+                type: "span",
+                props: {
+                  style: {
+                    color: "#FFFFFF",
+                  },
+                  children: makeHighlightedNodes(text, phrases),
+                },
+              },
+            ],
+          },
+        },
+      ],
+    },
+  };
 }
 
 export async function renderPoster(args: {
@@ -139,13 +232,20 @@ export async function renderPoster(args: {
       : "#17234a";
 
   const logoName =
-    args.logo === "dark" ? "logo_dark.png" : "logo_light.png";
+    args.logo === "dark"
+      ? "logo_dark.png"
+      : "logo_light.png";
 
   const logo = await fs.readFile(
-    path.join(process.cwd(), "public", "assets", logoName)
+    path.join(
+      process.cwd(),
+      "public",
+      "assets",
+      logoName
+    )
   );
 
-  const fontData = await loadBengaliFont();
+  const fonts = await loadFonts();
 
   const image64 = args.image.toString("base64");
   const logo64 = logo.toString("base64");
@@ -198,18 +298,6 @@ export async function renderPoster(args: {
   const imageTop =
     Number(d.photo_top || 0);
 
-  /*
-   * Safe Satori design:
-   *
-   * No CSS gradients.
-   * No transforms.
-   * No inset.
-   * No textShadow.
-   *
-   * These are deliberately avoided because they caused
-   * unstable Satori rendering on Vercel.
-   */
-
   const tree: any = {
     type: "div",
 
@@ -227,7 +315,6 @@ export async function renderPoster(args: {
         /*
          * PHOTO
          */
-
         {
           type: "img",
 
@@ -247,10 +334,7 @@ export async function renderPoster(args: {
 
         /*
          * TOP DARK PANEL
-         *
-         * This replaces the unstable CSS gradient.
          */
-
         {
           type: "div",
 
@@ -260,16 +344,18 @@ export async function renderPoster(args: {
               left: 0,
               top: 0,
               width: 2160,
-              height: 1050,
-              backgroundColor: "rgba(12, 22, 52, 0.82)",
+              height: 1000,
+              backgroundColor: "rgba(12, 22, 52, 0.80)",
+              display: "flex",
             },
+
+            children: [],
           },
         },
 
         /*
          * LOWER TEXT PROTECTION
          */
-
         {
           type: "div",
 
@@ -277,18 +363,20 @@ export async function renderPoster(args: {
             style: {
               position: "absolute",
               left: 0,
-              top: 900,
+              top: 880,
               width: 2160,
-              height: 950,
-              backgroundColor: "rgba(10, 16, 35, 0.42)",
+              height: 850,
+              backgroundColor: "rgba(10, 16, 35, 0.30)",
+              display: "flex",
             },
+
+            children: [],
           },
         },
 
         /*
          * WEBSITE
          */
-
         {
           type: "div",
 
@@ -301,6 +389,7 @@ export async function renderPoster(args: {
               fontSize: 38,
               fontWeight: 600,
               color: "#ffffff",
+              display: "flex",
             },
 
             children: "sciencebee.com.bd",
@@ -310,7 +399,6 @@ export async function renderPoster(args: {
         /*
          * SCIENCE BEE LOGO
          */
-
         {
           type: "img",
 
@@ -330,7 +418,6 @@ export async function renderPoster(args: {
         /*
          * SOURCE PILL
          */
-
         {
           type: "div",
 
@@ -340,7 +427,7 @@ export async function renderPoster(args: {
               left: 420,
               top: sourceTop,
               width: 1320,
-              height: 72,
+              minHeight: 72,
 
               display: "flex",
               alignItems: "center",
@@ -360,6 +447,9 @@ export async function renderPoster(args: {
               fontWeight: 600,
 
               textAlign: "center",
+
+              paddingLeft: 40,
+              paddingRight: 40,
             },
 
             children: `সূত্র: ${args.source || ""}`,
@@ -367,9 +457,8 @@ export async function renderPoster(args: {
         },
 
         /*
-         * HEADLINE
+         * HEADLINE AREA
          */
-
         {
           type: "div",
 
@@ -391,7 +480,10 @@ export async function renderPoster(args: {
               alignItems: "center",
 
               fontFamily: "SB",
+              fontSize: headlineSize,
               fontWeight: 700,
+
+              lineHeight,
 
               textAlign: "center",
 
@@ -399,73 +491,70 @@ export async function renderPoster(args: {
             },
 
             children: [
-             {
-  type: "div",
+              /*
+               * HEADLINE TEXT
+               *
+               * No flex-wrap here.
+               */
+              richText(
+                args.headline || "",
+                args.phrases || [],
+                {
+                  width: headlineWidth,
+                  fontFamily: "SB",
+                  fontSize: headlineSize,
+                  fontWeight: 700,
+                  lineHeight,
+                  textAlign: "center",
+                  color: "#ffffff",
+                }
+              ),
 
-  props: {
-    style: {
-      width: headlineWidth,
-
-      display: "flex",
-      flexDirection: "row",
-      flexWrap: "wrap",
-      justifyContent: "center",
-      alignItems: "center",
-
-      fontFamily: "SB",
-      fontSize: headlineSize,
-      fontWeight: 700,
-
-      lineHeight,
-
-      textAlign: "center",
-
-      color: "#ffffff",
-    },
-
-    children: makeHighlightedText(
-      args.headline || "",
-      args.phrases || []
-    ),
-  },
-},
               /*
                * SUBHEADLINE
                */
-
               {
-  type: "div",
+                type: "div",
 
-  props: {
-    style: {
-      marginTop:
-        Number(d.subheadline_y || 20),
+                props: {
+                  style: {
+                    marginTop:
+                      Number(d.subheadline_y || 28),
 
-      width: subheadlineWidth,
+                    width: subheadlineWidth,
 
-      display: "flex",
-      flexDirection: "row",
-      flexWrap: "wrap",
-      justifyContent: "center",
-      alignItems: "center",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
 
-      fontFamily: "SB",
-      fontSize: subheadlineSize,
-      fontWeight: 600,
+                    fontFamily: "SB",
+                    fontSize: subheadlineSize,
+                    fontWeight: 600,
 
-      lineHeight,
+                    lineHeight,
 
-      textAlign: "center",
+                    textAlign: "center",
 
-      color: "#ffffff",
-    },
+                    color: "#ffffff",
+                  },
 
-    children: makeHighlightedText(
-      args.subheadline || "",
-      args.phrases || []
-    ),
-  },
-},
+                  children: [
+                    richText(
+                      args.subheadline || "",
+                      args.phrases || [],
+                      {
+                        width: subheadlineWidth,
+                        fontFamily: "SB",
+                        fontSize: subheadlineSize,
+                        fontWeight: 600,
+                        lineHeight,
+                        textAlign: "center",
+                        color: "#ffffff",
+                      }
+                    ),
+                  ],
+                },
+              },
             ],
           },
         },
@@ -473,7 +562,6 @@ export async function renderPoster(args: {
         /*
          * BOTTOM SCIENCE BEE STRIP
          */
-
         {
           type: "div",
 
@@ -503,7 +591,7 @@ export async function renderPoster(args: {
             },
 
             children:
-              "SCIENCE BEE  •  বিজ্ঞান, প্রযুক্তি ও গবেষণা",
+              "বিজ্ঞান, প্রযুক্তি ও গবেষণা",
           },
         },
       ],
@@ -517,17 +605,33 @@ export async function renderPoster(args: {
     fonts: [
       {
         name: "SB",
-        data: fontData,
+        data: fonts.regular,
+        weight: 400,
+        style: "normal",
+      },
+      {
+        name: "SB",
+        data: fonts.regular,
+        weight: 500,
+        style: "normal",
+      },
+      {
+        name: "SB",
+        data: fonts.semibold,
         weight: 600,
         style: "normal",
       },
       {
         name: "SB",
-        data: fontData,
+        data: fonts.semibold,
         weight: 700,
         style: "normal",
       },
     ],
+
+    embedFont: true,
+
+    pointScaleFactor: 1,
   });
 
   return Buffer.from(
