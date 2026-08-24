@@ -399,31 +399,36 @@ export async function renderPoster(args: {
             },
 
             children: [
-              {
-                type: "div",
+             {
+  type: "div",
 
-                props: {
-                  style: {
-                    width: headlineWidth,
+  props: {
+    style: {
+      width: headlineWidth,
 
-                    fontFamily: "SB",
-                    fontSize: headlineSize,
-                    fontWeight: 700,
+      display: "flex",
+      flexDirection: "row",
+      flexWrap: "wrap",
+      justifyContent: "center",
+      alignItems: "center",
 
-                    lineHeight,
+      fontFamily: "SB",
+      fontSize: headlineSize,
+      fontWeight: 700,
 
-                    textAlign: "center",
+      lineHeight,
 
-                    color: "#ffffff",
-                  },
+      textAlign: "center",
 
-                  children: makeHighlightedText(
-                    args.headline || "",
-                    args.phrases || []
-                  ),
-                },
-              },
+      color: "#ffffff",
+    },
 
+    children: makeHighlightedText(
+      args.headline || "",
+      args.phrases || []
+    ),
+  },
+},
               /*
                * SUBHEADLINE
                */
