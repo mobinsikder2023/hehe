@@ -72,10 +72,14 @@ function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function spans(text: string, phrases: string[]) {
-  const clean = phrases
+function spans(text: string, phrases: string[] | null | undefined) {
+  const clean = (phrases || [])
     .filter(Boolean)
     .sort((a, b) => b.length - a.length);
+
+  if (!text) {
+    return "";
+  }
 
   if (!clean.length) {
     return text;
