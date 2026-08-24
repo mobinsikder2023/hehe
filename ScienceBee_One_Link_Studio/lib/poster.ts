@@ -744,10 +744,7 @@ height: 74,
 
                     display: "block",
 
-                    transform:
-                      `translateX(${
-                        d.subheadline_x || 0
-                      }px)`,
+                  
 
                     fontFamily: "SB",
 
