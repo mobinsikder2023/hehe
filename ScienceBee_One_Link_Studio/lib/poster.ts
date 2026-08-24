@@ -5,16 +5,6 @@ import satori from "satori";
 import { Resvg } from "@resvg/resvg-js";
 import { DEFAULT_DESIGN, Design } from "./types";
 
-function rgba(hex: string, alpha: number) {
-  const h = hex.replace("#", "");
-
-  const r = parseInt(h.slice(0, 2), 16);
-  const g = parseInt(h.slice(2, 4), 16);
-  const b = parseInt(h.slice(4, 6), 16);
-
-  return `rgba(${r},${g},${b},${alpha})`;
-}
-
 function valid(hex: string) {
   return /^#[0-9a-f]{6}$/i.test(hex);
 }
@@ -26,7 +16,7 @@ function clamp(value: number, min: number, max: number) {
 async function autoColor(image: Buffer, darkening: number) {
   try {
     const { data, info } = await sharp(image)
-      .resize(120, 120, {
+      .resize(80, 80, {
         fit: "cover",
         position: "top",
       })
@@ -45,26 +35,44 @@ async function autoColor(image: Buffer, darkening: number) {
       n++;
     }
 
-    const factor = Math.max(0.35, 1 - darkening);
+    const factor = Math.max(0.4, 1 - darkening);
 
-    return `#${Math.round((r / n) * factor)
-      .toString(16)
-      .padStart(2, "0")}${Math.round((g / n) * factor)
-      .toString(16)
-      .padStart(2, "0")}${Math.round((b / n) * factor)
-      .toString(16)
-      .padStart(2, "0")}`;
+    return (
+      "#" +
+      Math.round((r / n) * factor)
+        .toString(16)
+        .padStart(2, "0") +
+      Math.round((g / n) * factor)
+        .toString(16)
+        .padStart(2, "0") +
+      Math.round((b / n) * factor)
+        .toString(16)
+        .padStart(2, "0")
+    );
   } catch {
     return "#17234a";
   }
 }
 
-async function loadFont() {
-  return fs.readFile(
-    path.join(
-      process.cwd(),
-      "public/assets/NotoSerifBengali-Bold.ttf"
-    )
+async function loadBengaliFont() {
+  const candidates = [
+    "NotoSansBengali-SemiBold.ttf",
+    "NotoSansBengali-Regular.ttf",
+    "NotoSerifBengali-Bold.ttf",
+  ];
+
+  for (const filename of candidates) {
+    try {
+      return await fs.readFile(
+        path.join(process.cwd(), "public", "assets", filename)
+      );
+    } catch {
+      // Try the next font.
+    }
+  }
+
+  throw new Error(
+    "Bengali font not found. Add NotoSansBengali-SemiBold.ttf to public/assets."
   );
 }
 
@@ -72,18 +80,18 @@ function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function spans(text: string, phrases: string[] | null | undefined) {
+function makeHighlightedText(
+  text: string,
+  phrases: string[] | null | undefined
+) {
   const clean = (phrases || [])
-    .filter(Boolean)
+    .filter((x) => typeof x === "string" && x.trim())
+    .map((x) => x.trim())
     .sort((a, b) => b.length - a.length);
 
-  if (!text) {
-    return "";
-  }
+  if (!text) return "";
 
-  if (!clean.length) {
-    return text;
-  }
+  if (!clean.length) return text;
 
   const expression = new RegExp(
     `(${clean.map(escapeRegExp).join("|")})`,
@@ -92,59 +100,21 @@ function spans(text: string, phrases: string[] | null | undefined) {
 
   const parts = text.split(expression);
 
-function spans(
-  text: string,
-  phrases: string[] | null | undefined
-) {
-  const safeText =
-    typeof text === "string" ? text : "";
-
-  const clean = Array.isArray(phrases)
-    ? phrases
-        .filter(
-          (p): p is string =>
-            typeof p === "string" && p.trim().length > 0
-        )
-        .map((p) => p.trim())
-        .sort((a, b) => b.length - a.length)
-    : [];
-
-  if (!safeText) {
-    return "";
-  }
-
-  if (clean.length === 0) {
-    return safeText;
-  }
-
-  const expression = new RegExp(
-    `(${clean.map(escapeRegExp).join("|")})`,
-    "g"
-  );
-
-  const parts = safeText.split(expression);
-
   return parts.map((part) => {
     if (clean.includes(part)) {
       return {
         type: "span",
         props: {
           style: {
-            color: "#ffd400",
+            color: "#FFD400",
           },
           children: part,
         },
       };
     }
 
-    return {
-      type: "span",
-      props: {
-        children: part,
-      },
-    };
+    return part;
   });
-}
 }
 
 export async function renderPoster(args: {
@@ -156,234 +126,88 @@ export async function renderPoster(args: {
   design?: Partial<Design>;
   logo: "auto" | "light" | "dark";
 }) {
-const rawDesign =
-  args.design && typeof args.design === "object"
-    ? args.design
-    : {};
+  const d: Design = {
+    ...DEFAULT_DESIGN,
+    ...(args.design || {}),
+  };
 
-const d: Design = {
-  ...DEFAULT_DESIGN,
-  ...Object.fromEntries(
-    Object.entries(rawDesign).filter(
-      ([, value]) => value !== null && value !== undefined
-    )
-  ),
-};
-
-  /*
-   * ------------------------------------------------------------
-   * COLORS
-   * ------------------------------------------------------------
-   */
-
-  let shadow =
+  const shadow =
     d.shadow_color === "auto"
-      ? await autoColor(args.image, d.darkening)
-      : d.shadow_color;
-
-  if (!valid(shadow)) {
-    shadow = "#17234a";
-  }
-
-  /*
-   * ------------------------------------------------------------
-   * LOGO
-   * ------------------------------------------------------------
-   */
+      ? await autoColor(args.image, d.darkening || 0.08)
+      : valid(d.shadow_color)
+      ? d.shadow_color
+      : "#17234a";
 
   const logoName =
-    args.logo === "light"
-      ? "logo_light.png"
-      : args.logo === "dark"
-      ? "logo_dark.png"
-      : "logo_light.png";
+    args.logo === "dark" ? "logo_dark.png" : "logo_light.png";
 
   const logo = await fs.readFile(
-    path.join(process.cwd(), "public/assets", logoName)
+    path.join(process.cwd(), "public", "assets", logoName)
   );
 
-  const fontData = await loadFont();
+  const fontData = await loadBengaliFont();
 
   const image64 = args.image.toString("base64");
   const logo64 = logo.toString("base64");
 
-  /*
-   * ------------------------------------------------------------
-   * FONT SIZES
-   * ------------------------------------------------------------
-   */
+  const headlineSize = clamp(
+    Number(d.headline_font_size || 112),
+    60,
+    150
+  );
 
-  const headlineSize =
-    d.headline_font_size || 112;
-
-  const subheadlineSize =
-    d.subheadline_font_size ?? 54;
-
-  /*
-   * ------------------------------------------------------------
-   * TEXT WIDTHS
-   * ------------------------------------------------------------
-   */
+  const subheadlineSize = clamp(
+    Number(d.subheadline_font_size || 54),
+    32,
+    80
+  );
 
   const headlineWidth = clamp(
-    d.headline_width || 1840,
-    900,
-    2000
+    Number(d.headline_width || 1840),
+    1000,
+    1960
   );
 
   const subheadlineWidth = clamp(
-    d.subheadline_width ?? 1840,
-    900,
-    2000
+    Number(d.subheadline_width || 1840),
+    1000,
+    1960
   );
-
-  /*
-   * ------------------------------------------------------------
-   * COMPOSITION
-   * ------------------------------------------------------------
-   *
-   * image_first:
-   *   Photograph remains dominant.
-   *   Text is placed in the upper portion.
-   *
-   * text_first:
-   *   Text receives a stronger dedicated upper region.
-   *
-   * The image is NEVER globally darkened heavily.
-   */
-
-  const composition =
-    d.composition || "image_first";
-
-  /*
-   * ------------------------------------------------------------
-   * GRADIENT
-   * ------------------------------------------------------------
-   *
-   * fade_length now actually controls how far the gradient
-   * extends.
-   *
-   * We do NOT put a black overlay over the entire image.
-   */
-
-  const fade = clamp(
-    d.fade_length || 650,
-    150,
-    1400
-  );
-
-  const fadePercent = clamp(
-    (fade / 2700) * 100,
-    8,
-    58
-  );
-
-  const gradient =
-    composition === "image_first"
-      ? `
-        linear-gradient(
-          to bottom,
-          ${rgba(shadow, 0.98)} 0%,
-          ${rgba(shadow, 0.92)} 12%,
-          ${rgba(shadow, 0.70)} 25%,
-          ${rgba(shadow, 0.32)} ${Math.max(
-            32,
-            fadePercent * 0.75
-          )}%,
-          rgba(0,0,0,0) ${fadePercent}%
-        )
-      `
-      : `
-        linear-gradient(
-          to bottom,
-          ${rgba(shadow, 0.98)} 0%,
-          ${rgba(shadow, 0.94)} 14%,
-          ${rgba(shadow, 0.72)} 30%,
-          ${rgba(shadow, 0.25)} ${Math.max(
-            40,
-            fadePercent
-          )}%,
-          rgba(0,0,0,0) ${Math.min(
-            72,
-            fadePercent + 18
-          )}%
-        )
-      `;
-
-  /*
-   * ------------------------------------------------------------
-   * IMAGE POSITION
-   * ------------------------------------------------------------
-   */
-
-  const imageTop =
-    d.photo_top && d.photo_top !== 0
-      ? d.photo_top
-      : 0;
-
-  /*
-   * We retain the existing photo_top setting but don't force
-   * the image into an artificial crop when it is zero.
-   */
-
-  /*
-   * ------------------------------------------------------------
-   * HEADLINE POSITION
-   * ------------------------------------------------------------
-   */
 
   const headlineTop =
-    composition === "image_first"
-      ? Math.max(220, d.headline_top ?? 340)
-      : Math.max(180, d.headline_top ?? 300);
-
-  /*
-   * ------------------------------------------------------------
-   * SOURCE
-   * ------------------------------------------------------------
-   *
-   * IMPORTANT:
-   * This is actual Bengali UTF-8, not the corrupted text
-   * that existed in the previous renderer.
-   */
-
-  const sourceText =
-    `সূত্র: ${args.source || ""}`;
-
-  const sourceWidth = clamp(
-    300 + sourceText.length * 16,
-    420,
-    1000
-  );
+    Number(d.headline_top || 420);
 
   const sourceTop =
-    composition === "image_first"
-      ? Math.max(
-          180,
-          headlineTop - d.source_font_size - 80
-        )
-      : Math.max(
-          180,
-          d.source_top ?? 500
-        );
+    Number(d.source_top || 250);
+
+  const logoWidth =
+    Number(d.logo_width || 220);
+
+  const logoTop =
+    Number(d.logo_top || 60);
+
+  const logoRight =
+    Number(d.logo_right || 80);
+
+  const sourceFontSize =
+    Number(d.source_font_size || 34);
+
+  const lineHeight =
+    Number(d.line_height || 1.08);
+
+  const imageTop =
+    Number(d.photo_top || 0);
 
   /*
-   * ------------------------------------------------------------
-   * SOURCE BACKGROUND
-   * ------------------------------------------------------------
-   */
-
-  const sourceBackground =
-    d.source_bg === "transparent"
-      ? "transparent"
-      : valid(d.source_bg)
-      ? d.source_bg
-      : "#24428e";
-
-  /*
-   * ------------------------------------------------------------
-   * SATORI TREE
-   * ------------------------------------------------------------
+   * Safe Satori design:
+   *
+   * No CSS gradients.
+   * No transforms.
+   * No inset.
+   * No textShadow.
+   *
+   * These are deliberately avoided because they caused
+   * unstable Satori rendering on Vercel.
    */
 
   const tree: any = {
@@ -393,52 +217,38 @@ const d: Design = {
       style: {
         width: 2160,
         height: 2700,
-
         display: "flex",
         position: "relative",
-
         overflow: "hidden",
-
         backgroundColor: shadow,
       },
 
       children: [
         /*
-         * ======================================================
-         * IMAGE
-         * ======================================================
+         * PHOTO
          */
 
         {
           type: "img",
 
           props: {
-            src:
-              `data:image/jpeg;base64,${image64}`,
+            src: `data:image/jpeg;base64,${image64}`,
 
             style: {
               position: "absolute",
-
               left: 0,
               top: imageTop,
-
               width: 2160,
-              height:
-                2700 - imageTop,
-
+              height: 2700 - imageTop,
               objectFit: "cover",
-
-              objectPosition: "center center",
             },
           },
         },
 
         /*
-         * ======================================================
-         * CONTROLLED GRADIENT
-         * ======================================================
+         * TOP DARK PANEL
          *
-         * Only the text area receives strong shading.
+         * This replaces the unstable CSS gradient.
          */
 
         {
@@ -447,78 +257,17 @@ const d: Design = {
           props: {
             style: {
               position: "absolute",
-
               left: 0,
               top: 0,
-              right: 0,
-
-              height:
-                composition === "image_first"
-                  ? Math.min(
-                      1600,
-                      fade + 850
-                    )
-                  : Math.min(
-                      1750,
-                      fade + 1000
-                    ),
-
-            backgroundColor: "transparent",
-
-            
+              width: 2160,
+              height: 1050,
+              backgroundColor: "rgba(12, 22, 52, 0.82)",
             },
           },
         },
 
         /*
-         * ======================================================
-         * VERY LIGHT GLOBAL DARKENING
-         * ======================================================
-         *
-         * Previous version used d.darkening directly and could
-         * make the entire photograph very dark.
-         *
-         * Now the value is intentionally capped.
-         */
-
-        ...(d.darkening > 0
-          ? [
-              {
-                type: "div",
-
-                props: {
-                  style: {
-                    position: "absolute",
-
-                    left: 0,
-                    top: 0,
-                    right: 0,
-                    bottom: 0,
-
-                    backgroundColor:
-                      `rgba(0,0,0,${clamp(
-                        d.darkening * 0.10,
-                        0,
-                        0.035
-                      )})`,
-                  },
-                },
-              },
-            ]
-          : []),
-
-        /*
-         * ======================================================
-         * WEBSITE
-         * ======================================================
-         *
-         * IMPORTANT:
-         * Don't use Arial here.
-         *
-         * Satori does not automatically have Arial available
-         * on Vercel.
-         *
-         * SB is our loaded Bengali/Unicode font.
+         * LOWER TEXT PROTECTION
          */
 
         {
@@ -527,61 +276,59 @@ const d: Design = {
           props: {
             style: {
               position: "absolute",
-
-              left: 100,
-              top: 88,
-
-              fontFamily: "SB",
-
-              fontSize: 44,
-              fontWeight: 700,
-
-              color: "#ffffff",
-
-              whiteSpace: "nowrap",
-
-              textShadow:
-                "0 2px 5px rgba(0,0,0,0.35)",
+              left: 0,
+              top: 900,
+              width: 2160,
+              height: 950,
+              backgroundColor: "rgba(10, 16, 35, 0.42)",
             },
-
-            children:
-              "sciencebee.com.bd",
           },
         },
 
         /*
-         * ======================================================
-         * LOGO
-         * ======================================================
+         * WEBSITE
+         */
+
+        {
+          type: "div",
+
+          props: {
+            style: {
+              position: "absolute",
+              left: 90,
+              top: 70,
+              fontFamily: "SB",
+              fontSize: 38,
+              fontWeight: 600,
+              color: "#ffffff",
+            },
+
+            children: "sciencebee.com.bd",
+          },
+        },
+
+        /*
+         * SCIENCE BEE LOGO
          */
 
         {
           type: "img",
 
           props: {
-            src:
-              `data:image/png;base64,${logo64}`,
+            src: `data:image/png;base64,${logo64}`,
 
             style: {
               position: "absolute",
-
-              right: d.logo_right,
-              top: d.logo_top,
-
-              width: d.logo_width,
-
+              right: logoRight,
+              top: logoTop,
+              width: logoWidth,
               height: "auto",
             },
           },
         },
 
         /*
-         * ======================================================
-         * SOURCE
-         * ======================================================
-         *
-         * Compact pill/rectangle.
-         * It no longer becomes a full-width blue bar.
+         * SOURCE PILL
          */
 
         {
@@ -590,55 +337,37 @@ const d: Design = {
           props: {
             style: {
               position: "absolute",
-
-            left:
-  (d.source_x ?? 1080) - sourceWidth / 2,
-
-top: sourceTop,
-
-width: sourceWidth,
-height: 74,
+              left: 420,
+              top: sourceTop,
+              width: 1320,
+              height: 72,
 
               display: "flex",
-
               alignItems: "center",
               justifyContent: "center",
 
-              paddingLeft: 28,
-              paddingRight: 28,
-
-              borderRadius: 38,
+              borderRadius: 36,
 
               backgroundColor:
-                sourceBackground,
+                valid(d.source_bg)
+                  ? d.source_bg
+                  : "#24428E",
 
               color: "#ffffff",
 
               fontFamily: "SB",
-
-              fontSize:
-                d.source_font_size ?? 34,
-
-              fontWeight: 700,
-
-              whiteSpace: "nowrap",
-
-              overflow: "hidden",
+              fontSize: sourceFontSize,
+              fontWeight: 600,
 
               textAlign: "center",
-
-              textShadow:
-                "0 2px 5px rgba(0,0,0,0.25)",
             },
 
-            children: sourceText,
+            children: `সূত্র: ${args.source || ""}`,
           },
         },
 
         /*
-         * ======================================================
-         * TEXT CONTAINER
-         * ======================================================
+         * HEADLINE
          */
 
         {
@@ -650,7 +379,7 @@ height: 74,
 
               left:
                 1080 +
-                (d.headline_x ?? 0) -
+                Number(d.headline_x || 0) -
                 headlineWidth / 2,
 
               top: headlineTop,
@@ -658,34 +387,18 @@ height: 74,
               width: headlineWidth,
 
               display: "flex",
-
               flexDirection: "column",
-
               alignItems: "center",
 
               fontFamily: "SB",
-
               fontWeight: 700,
 
               textAlign: "center",
 
               color: "#ffffff",
-
-              overflow: "hidden",
             },
 
             children: [
-              /*
-               * ==================================================
-               * HEADLINE
-               * ==================================================
-               *
-               * IMPORTANT:
-               * No horizontal flex container around the text.
-               *
-               * This lets Satori perform natural text wrapping.
-               */
-
               {
                 type: "div",
 
@@ -693,32 +406,18 @@ height: 74,
                   style: {
                     width: headlineWidth,
 
-                    display: "block",
-
                     fontFamily: "SB",
-
-                    fontSize:
-                      headlineSize,
-
-                    lineHeight:
-                      d.line_height || 1.10,
-
+                    fontSize: headlineSize,
                     fontWeight: 700,
+
+                    lineHeight,
 
                     textAlign: "center",
 
                     color: "#ffffff",
-
-                    paddingLeft: 20,
-                    paddingRight: 20,
-
-                    textShadow:
-                      "0 3px 8px rgba(0,0,0,0.55)",
-
-                    
                   },
 
-                  children: spans(
+                  children: makeHighlightedText(
                     args.headline || "",
                     args.phrases || []
                   ),
@@ -726,9 +425,7 @@ height: 74,
               },
 
               /*
-               * ==================================================
                * SUBHEADLINE
-               * ==================================================
                */
 
               {
@@ -737,39 +434,22 @@ height: 74,
                 props: {
                   style: {
                     marginTop:
-                      d.subheadline_y ?? 15,
+                      Number(d.subheadline_y || 20),
 
-                    width:
-                      subheadlineWidth,
-
-                    display: "block",
-
-                  
+                    width: subheadlineWidth,
 
                     fontFamily: "SB",
+                    fontSize: subheadlineSize,
+                    fontWeight: 600,
 
-                    fontSize:
-                      subheadlineSize,
-
-                    lineHeight:
-                      d.line_height || 1.10,
-
-                    fontWeight: 700,
+                    lineHeight,
 
                     textAlign: "center",
 
                     color: "#ffffff",
-
-                    paddingLeft: 20,
-                    paddingRight: 20,
-
-                    textShadow:
-                      "0 3px 7px rgba(0,0,0,0.55)",
-
-                    wordBreak: "normal",
                   },
 
-                  children: spans(
+                  children: makeHighlightedText(
                     args.subheadline || "",
                     args.phrases || []
                   ),
@@ -778,23 +458,58 @@ height: 74,
             ],
           },
         },
+
+        /*
+         * BOTTOM SCIENCE BEE STRIP
+         */
+
+        {
+          type: "div",
+
+          props: {
+            style: {
+              position: "absolute",
+
+              left: 0,
+              bottom: 0,
+
+              width: 2160,
+              height: 105,
+
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+
+              backgroundColor: "#172F75",
+
+              color: "#ffffff",
+
+              fontFamily: "SB",
+              fontSize: 32,
+              fontWeight: 600,
+
+              textAlign: "center",
+            },
+
+            children:
+              "SCIENCE BEE  •  বিজ্ঞান, প্রযুক্তি ও গবেষণা",
+          },
+        },
       ],
     },
   };
 
-  /*
-   * ============================================================
-   * RENDER
-   * ============================================================
-   */
-
- let svg: string;
-
-try {
-  svg = await satori(tree, {
+  const svg = await satori(tree, {
     width: 2160,
     height: 2700,
+
     fonts: [
+      {
+        name: "SB",
+        data: fontData,
+        weight: 600,
+        style: "normal",
+      },
       {
         name: "SB",
         data: fontData,
@@ -803,21 +518,6 @@ try {
       },
     ],
   });
-} catch (error: any) {
-  console.error("SATORI_RENDER_ERROR", {
-    message: error?.message,
-    stack: error?.stack,
-    design: d,
-    headline: args.headline,
-    subheadline: args.subheadline,
-    source: args.source,
-    phrases: args.phrases,
-  });
-
-  throw new Error(
-    `Satori failed: ${error?.message || String(error)}`
-  );
-}
 
   return Buffer.from(
     new Resvg(svg, {
