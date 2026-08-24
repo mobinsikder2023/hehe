@@ -434,32 +434,38 @@ export async function renderPoster(args: {
                */
 
               {
-                type: "div",
+  type: "div",
 
-                props: {
-                  style: {
-                    marginTop:
-                      Number(d.subheadline_y || 20),
+  props: {
+    style: {
+      marginTop:
+        Number(d.subheadline_y || 20),
 
-                    width: subheadlineWidth,
+      width: subheadlineWidth,
 
-                    fontFamily: "SB",
-                    fontSize: subheadlineSize,
-                    fontWeight: 600,
+      display: "flex",
+      flexDirection: "row",
+      flexWrap: "wrap",
+      justifyContent: "center",
+      alignItems: "center",
 
-                    lineHeight,
+      fontFamily: "SB",
+      fontSize: subheadlineSize,
+      fontWeight: 600,
 
-                    textAlign: "center",
+      lineHeight,
 
-                    color: "#ffffff",
-                  },
+      textAlign: "center",
 
-                  children: makeHighlightedText(
-                    args.subheadline || "",
-                    args.phrases || []
-                  ),
-                },
-              },
+      color: "#ffffff",
+    },
+
+    children: makeHighlightedText(
+      args.subheadline || "",
+      args.phrases || []
+    ),
+  },
+},
             ],
           },
         },
