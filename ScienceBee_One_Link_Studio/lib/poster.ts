@@ -418,7 +418,7 @@ export async function renderPoster(args: {
 
               backgroundImage: gradient,
 
-              pointerEvents: "none",
+            
             },
           },
         },
