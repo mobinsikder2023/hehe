@@ -794,25 +794,36 @@ const d: Design = {
    * ============================================================
    */
 
-  const svg = await satori(
-    tree,
-    {
-      width: 2160,
-      height: 2700,
+ let svg: string;
 
-      fonts: [
-        {
-          name: "SB",
+try {
+  svg = await satori(tree, {
+    width: 2160,
+    height: 2700,
+    fonts: [
+      {
+        name: "SB",
+        data: fontData,
+        weight: 700,
+        style: "normal",
+      },
+    ],
+  });
+} catch (error: any) {
+  console.error("SATORI_RENDER_ERROR", {
+    message: error?.message,
+    stack: error?.stack,
+    design: d,
+    headline: args.headline,
+    subheadline: args.subheadline,
+    source: args.source,
+    phrases: args.phrases,
+  });
 
-          data: fontData,
-
-          weight: 700,
-
-          style: "normal",
-        },
-      ],
-    }
+  throw new Error(
+    `Satori failed: ${error?.message || String(error)}`
   );
+}
 
   return Buffer.from(
     new Resvg(svg, {
