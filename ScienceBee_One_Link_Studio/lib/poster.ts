@@ -591,16 +591,13 @@ const d: Design = {
             style: {
               position: "absolute",
 
-              left:
-                d.source_x || 1080,
+            left:
+  (d.source_x ?? 1080) - sourceWidth / 2,
 
-              top: sourceTop,
+top: sourceTop,
 
-              width: sourceWidth,
-              height: 74,
-
-              transform:
-                "translateX(-50%)",
+width: sourceWidth,
+height: 74,
 
               display: "flex",
 
