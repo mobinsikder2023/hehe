@@ -217,7 +217,7 @@ const d: Design = {
     d.headline_font_size || 112;
 
   const subheadlineSize =
-    d.subheadline_font_size || 54;
+    d.subheadline_font_size ?? 54;
 
   /*
    * ------------------------------------------------------------
@@ -232,7 +232,7 @@ const d: Design = {
   );
 
   const subheadlineWidth = clamp(
-    d.subheadline_width || 1840,
+    d.subheadline_width ?? 1840,
     900,
     2000
   );
@@ -334,8 +334,8 @@ const d: Design = {
 
   const headlineTop =
     composition === "image_first"
-      ? Math.max(220, d.headline_top || 340)
-      : Math.max(180, d.headline_top || 300);
+      ? Math.max(220, d.headline_top ?? 340)
+      : Math.max(180, d.headline_top ?? 300);
 
   /*
    * ------------------------------------------------------------
@@ -364,7 +364,7 @@ const d: Design = {
         )
       : Math.max(
           180,
-          d.source_top || 500
+          d.source_top ?? 500
         );
 
   /*
@@ -617,7 +617,7 @@ height: 74,
               fontFamily: "SB",
 
               fontSize:
-                d.source_font_size || 34,
+                d.source_font_size ?? 34,
 
               fontWeight: 700,
 
@@ -650,7 +650,7 @@ height: 74,
 
               left:
                 1080 +
-                (d.headline_x || 0) -
+                (d.headline_x ?? 0) -
                 headlineWidth / 2,
 
               top: headlineTop,
@@ -737,7 +737,7 @@ height: 74,
                 props: {
                   style: {
                     marginTop:
-                      d.subheadline_y || 15,
+                      d.subheadline_y ?? 15,
 
                     width:
                       subheadlineWidth,
