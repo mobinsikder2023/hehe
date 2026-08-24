@@ -92,6 +92,38 @@ function spans(text: string, phrases: string[] | null | undefined) {
 
   const parts = text.split(expression);
 
+function spans(
+  text: string,
+  phrases: string[] | null | undefined
+) {
+  const safeText =
+    typeof text === "string" ? text : "";
+
+  const clean = Array.isArray(phrases)
+    ? phrases
+        .filter(
+          (p): p is string =>
+            typeof p === "string" && p.trim().length > 0
+        )
+        .map((p) => p.trim())
+        .sort((a, b) => b.length - a.length)
+    : [];
+
+  if (!safeText) {
+    return "";
+  }
+
+  if (clean.length === 0) {
+    return safeText;
+  }
+
+  const expression = new RegExp(
+    `(${clean.map(escapeRegExp).join("|")})`,
+    "g"
+  );
+
+  const parts = safeText.split(expression);
+
   return parts.map((part) => {
     if (clean.includes(part)) {
       return {
@@ -105,8 +137,14 @@ function spans(text: string, phrases: string[] | null | undefined) {
       };
     }
 
-    return part;
+    return {
+      type: "span",
+      props: {
+        children: part,
+      },
+    };
   });
+}
 }
 
 export async function renderPoster(args: {
