@@ -1,0 +1,2 @@
+import {redirect} from 'next/navigation';import {supabaseServer} from '@/lib/supabase-server';import Studio from '@/components/Studio';
+export default async function Page(){const s=await supabaseServer();const {data:{user}}=await s.auth.getUser();if(!user)redirect('/login');return <Studio userEmail={user.email||''}/>;}

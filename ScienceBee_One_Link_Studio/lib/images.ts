@@ -1,0 +1,6 @@
+import sharp from "sharp";
+import type {Candidate} from "./types";
+const BAD=/(logo|watermark|icon|avatar|placeholder|sprite|banner|bbc|cnn|channel24|channel-24|prothomalo|daily-star|reuters-logo)/i;
+export async function pexels(query:string):Promise<Candidate[]>{const key=process.env.PEXELS_API_KEY;if(!key)return [];const u=new URL('https://api.pexels.com/v1/search');u.searchParams.set('query',query);u.searchParams.set('orientation','portrait');u.searchParams.set('per_page','12');const r=await fetch(u,{headers:{Authorization:key},cache:'no-store'});if(!r.ok)return [];const j=await r.json();return (j.photos||[]).map((p:any)=>({url:p.src?.large2x||p.src?.large,label:`Pexels · ${p.photographer||'photo'}`,type:'pexels',photographer:p.photographer})).filter((x:Candidate)=>x.url&&!BAD.test(x.url));}
+export async function downloadImage(url:string){const r=await fetch(url,{headers:{'User-Agent':'ScienceBeeEditorialBot/2.0'},cache:'no-store'});if(!r.ok)throw new Error('Image download failed');const type=r.headers.get('content-type')||'';if(!type.startsWith('image/'))throw new Error('URL is not an image');return Buffer.from(await r.arrayBuffer());}
+export async function normalizeImage(buf:Buffer){return sharp(buf).rotate().resize(2160,2700,{fit:'cover',position:'centre'}).jpeg({quality:94}).toBuffer();}
