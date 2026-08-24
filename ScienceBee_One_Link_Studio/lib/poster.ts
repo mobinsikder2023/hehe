@@ -24,6 +24,24 @@ function esc(value: string) {
     .replace(/'/g, "&apos;");
 }
 
+function repairMojibake(value: string) {
+  let text = String(value ?? "");
+  /*
+   * Older records were occasionally saved/displayed after UTF-8 bytes were
+   * decoded as Windows-1252/Latin-1. Typical signs are "à¦..." / "à§...".
+   * Repair only when those tell-tale sequences are present so normal Bengali
+   * text is left untouched.
+   */
+  if (!/[àÂÃ]/.test(text)) return text;
+
+  try {
+    const repaired = Buffer.from(text, "latin1").toString("utf8");
+    return /[\u0980-\u09FF]/.test(repaired) ? repaired : text;
+  } catch {
+    return text;
+  }
+}
+
 function rgba(hex: string, alpha: number) {
   const h = hex.replace("#", "");
   const r = parseInt(h.slice(0, 2), 16);
@@ -139,7 +157,7 @@ function lineTextSvg(
     )
     .join("");
 
-  return `<text x="${x}" y="${y}" text-anchor="middle" font-family="Noto Serif Bengali" font-size="${fontSize}" font-weight="700" fill="${fill}" style="paint-order:stroke;stroke:rgba(0,0,0,.22);stroke-width:2px">${tspans}</text>`;
+  return `<text x="${x}" y="${y}" text-anchor="middle" font-family="Noto Serif Bengali, DejaVu Sans" font-size="${fontSize}" font-weight="700" fill="${fill}" style="paint-order:stroke;stroke:rgba(0,0,0,.22);stroke-width:2px">${tspans}</text>`;
 }
 
 async function prepareJpeg(image: Buffer) {
@@ -231,7 +249,7 @@ export async function renderPoster(args: {
           650
         );
 
-  const sourceText = `সূত্র: ${args.source || ""}`;
+  const sourceText = `সূত্র: ${repairMojibake(args.source || "")}`;
   const sourceWidth = clamp(520 + bengaliUnits(sourceText) * 28, 620, 1500);
 
   const subTop =
@@ -317,7 +335,7 @@ export async function renderPoster(args: {
   <text
     x="${d.logo_right || 100}"
     y="${(d.logo_top || topPadding) + 44}"
-    font-family="Noto Serif Bengali"
+    font-family="DejaVu Sans"
     font-size="34"
     font-weight="700"
     fill="#ffffff"
@@ -339,7 +357,7 @@ export async function renderPoster(args: {
     x="${W / 2}"
     y="${sourceY + 53}"
     text-anchor="middle"
-    font-family="Noto Serif Bengali"
+    font-family="Noto Serif Bengali, DejaVu Sans"
     font-size="${sourceFont}"
     font-weight="700"
     fill="#ffffff"
@@ -354,7 +372,7 @@ export async function renderPoster(args: {
     x="${W / 2}"
     y="${footerY + 66}"
     text-anchor="middle"
-    font-family="Noto Serif Bengali"
+    font-family="Noto Serif Bengali, DejaVu Sans"
     font-size="30"
     font-weight="700"
     fill="#ffffff"
@@ -365,9 +383,9 @@ export async function renderPoster(args: {
     fitTo: { mode: "width", value: W },
     font: {
       fontFiles: [fontPath],
-      loadSystemFonts: false,
-      defaultFontFamily: "Noto Serif Bengali",
-      sansSerifFamily: "Noto Serif Bengali",
+      loadSystemFonts: true,
+      defaultFontFamily: "DejaVu Sans",
+      sansSerifFamily: "DejaVu Sans",
       serifFamily: "Noto Serif Bengali",
     },
     textRendering: 2,
