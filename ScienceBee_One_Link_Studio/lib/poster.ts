@@ -156,10 +156,19 @@ export async function renderPoster(args: {
   design?: Partial<Design>;
   logo: "auto" | "light" | "dark";
 }) {
-  const d: Design = {
-    ...DEFAULT_DESIGN,
-    ...(args.design || {}),
-  };
+const rawDesign =
+  args.design && typeof args.design === "object"
+    ? args.design
+    : {};
+
+const d: Design = {
+  ...DEFAULT_DESIGN,
+  ...Object.fromEntries(
+    Object.entries(rawDesign).filter(
+      ([, value]) => value !== null && value !== undefined
+    )
+  ),
+};
 
   /*
    * ------------------------------------------------------------
