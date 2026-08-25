@@ -7,8 +7,11 @@ const nextConfig: NextConfig = {
     }
   },
 
+  // Native modules must NOT be bundled by webpack — Next loads them
+  // directly at runtime on the server instead.
   serverExternalPackages: [
-    "@resvg/resvg-js"
+    "@napi-rs/canvas",
+    "sharp"
   ]
 };
 
