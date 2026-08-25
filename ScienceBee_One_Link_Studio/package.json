@@ -1,18 +1,27 @@
 {
-  "name":"sciencebee-one-link-studio-v10",
-  "version":"1.0.0",
-  "private":true,
-  "scripts":{"dev":"next dev","build":"next build","start":"next start","lint":"next lint"},
-  "dependencies":{
-    "@resvg/resvg-js":"^2.6.2",
-    "@supabase/ssr":"^0.7.0",
-    "@supabase/supabase-js":"^2.56.0",
-    "next":"^15.5.0",
-    "openai":"^5.19.0",
-    "react":"^19.1.0",
-    "react-dom":"^19.1.0",
-    "satori":"^0.12.2",
-    "sharp":"^0.34.3"
+  "name": "sciencebee-one-link-studio-v10",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
   },
-  "devDependencies":{"@types/node":"^22.0.0","@types/react":"^19.0.0","@types/react-dom":"^19.0.0","typescript":"^5.9.0"}
+  "dependencies": {
+    "@supabase/ssr": "^0.7.0",
+    "@supabase/supabase-js": "^2.56.0",
+    "next": "^15.5.0",
+    "openai": "^5.19.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "sharp": "^0.34.3",
+    "@napi-rs/canvas": "^1.0.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.9.0"
+  }
 }
