@@ -150,7 +150,8 @@ function drawCenteredLine(
   centerX: number,
   baselineY: number,
   size: number,
-  baseFill: string
+  baseFill: string,
+  highlightFill: string
 ) {
   ctx.font = fontStr(size);
   const pieces = splitHighlight(line, phrases);
@@ -163,7 +164,7 @@ function drawCenteredLine(
   ctx.textBaseline = "alphabetic";
 
   pieces.forEach((p, i) => {
-    ctx.fillStyle = p.yellow ? "#ffd400" : baseFill;
+    ctx.fillStyle = p.yellow ? highlightFill : baseFill;
     // subtle shadow for legibility on photos
     ctx.save();
     ctx.shadowColor = "rgba(0,0,0,0.35)";
@@ -202,6 +203,11 @@ export async function renderPoster(args: {
 
   const shadow =
     d.shadow_color && validHex(d.shadow_color) ? d.shadow_color : "#17234a";
+  const headlineColor = validHex(d.headline_color) ? d.headline_color : "#ffffff";
+  const highlightColor = validHex(d.highlight_color) ? d.highlight_color : "#ffd400";
+  const subColor = validHex(d.subheadline_color) ? d.subheadline_color : "#ffe9a8";
+  const sourceTextColor = validHex(d.source_text_color) ? d.source_text_color : "#ffffff";
+  const footerColor = validHex(d.footer_color) ? d.footer_color : "#24428e";
 
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext("2d");
@@ -231,16 +237,19 @@ export async function renderPoster(args: {
   ctx.fillStyle = topGrad;
   ctx.fillRect(0, 0, W, scrimH);
 
-  /* logo (top-right) */
-  const logoName =
-    args.logo === "dark" ? "logo_dark.png" : "logo_light.png";
-  const logoPath = path.join(process.cwd(), "public", "assets", logoName);
-  const logo = await loadImage(logoPath);
-  const logoW = clamp(num(d.logo_width, 220), 120, 520);
-  const logoH = (logo.height / logo.width) * logoW;
+  /* logo (top-right) — "none" hides it */
   const logoTop = num(d.logo_top, 64);
   const logoRight = num(d.logo_right, 100);
-  ctx.drawImage(logo, W - logoRight - logoW, logoTop, logoW, logoH);
+  const logoMode = d.logo || args.logo || "auto";
+  if (logoMode !== "none") {
+    const logoName =
+      logoMode === "dark" ? "logo_dark.png" : "logo_light.png";
+    const logoPath = path.join(process.cwd(), "public", "assets", logoName);
+    const logo = await loadImage(logoPath);
+    const logoW = clamp(num(d.logo_width, 220), 120, 520);
+    const logoH = (logo.height / logo.width) * logoW;
+    ctx.drawImage(logo, W - logoRight - logoW, logoTop, logoW, logoH);
+  }
 
   /* domain (top-left) */
   ctx.font = `700 34px "${LATIN}"`;
@@ -272,7 +281,8 @@ export async function renderPoster(args: {
       centerX,
       headlineTop + i * hLineH + hFit.size,
       hFit.size,
-      "#ffffff"
+      headlineColor,
+      highlightColor
     );
   });
 
@@ -299,7 +309,8 @@ export async function renderPoster(args: {
         centerX,
         subTop + i * sLineH + sFit.size,
         sFit.size,
-        "#ffe9a8"
+        subColor,
+        highlightColor
       );
     });
 
@@ -337,23 +348,30 @@ export async function renderPoster(args: {
       ctx.globalAlpha = 1;
     }
 
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = sourceTextColor;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(sourceText, pillCX, pillY + pillH / 2 + 2);
   }
 
-  /* ---- footer bar ---- */
-  const footerH = 108;
-  const footerY = H - footerH;
-  ctx.fillStyle = "#24428e";
-  ctx.fillRect(0, footerY, W, footerH);
+  /* ---- footer bar (optional) ---- */
+  if (d.footer_enabled !== false) {
+    const footerText = String(
+      d.footer_text ?? "বিজ্ঞান, প্রযুক্তি ও গবেষণা"
+    );
+    const footerH = 108;
+    const footerY = H - footerH;
+    ctx.fillStyle = footerColor;
+    ctx.fillRect(0, footerY, W, footerH);
 
-  ctx.font = fontStr(30);
-  ctx.fillStyle = "#ffffff";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("বিজ্ঞান, প্রযুক্তি ও গবেষণা", W / 2, footerY + footerH / 2 + 2);
+    if (footerText.trim()) {
+      ctx.font = fontStr(30);
+      ctx.fillStyle = "#ffffff";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(footerText, W / 2, footerY + footerH / 2 + 2);
+    }
+  }
 
   return canvas.toBuffer("image/png");
 }
