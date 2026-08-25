@@ -8,6 +8,51 @@ const W = 2160;
 const H = 2700;
 
 const BENGALI_FONT_FAMILY = "Noto Serif Bengali";
+const LATIN_FONT_FAMILY = "Noto Sans";
+
+/*
+ * Figure space (U+2007) is not present in the Bengali font, so
+ * resvg draws it from the Latin font. Unlike a normal ASCII space,
+ * the Bengali shaper will NOT absorb it into a preceding vowel-sign
+ * cluster, which is what previously made word gaps disappear
+ * (e.g. "সমুদ্রে ভাসমান" collapsing into one word). We use it as the
+ * separator between every word.
+ */
+const FIGURE_SPACE = "\u2007";
+
+function isBengaliChar(ch: string) {
+  const c = ch.codePointAt(0) || 0;
+  return (
+    (c >= 0x0980 && c <= 0x09ff) ||
+    c === 0x200c ||
+    c === 0x200d
+  );
+}
+
+type ScriptRun = { text: string; latin: boolean };
+
+/*
+ * Split a single word into runs of Bengali vs non-Bengali so each
+ * run is drawn with a font that actually contains its glyphs.
+ * (The bundled Bengali TTF has no Latin glyphs at all.)
+ */
+function scriptRuns(word: string): ScriptRun[] {
+  const runs: ScriptRun[] = [];
+  let cur: ScriptRun | null = null;
+
+  for (const ch of String(word ?? "")) {
+    const latin = !isBengaliChar(ch);
+    if (cur && cur.latin === latin) {
+      cur.text += ch;
+    } else {
+      if (cur) runs.push(cur);
+      cur = { latin, text: ch };
+    }
+  }
+
+  if (cur) runs.push(cur);
+  return runs;
+}
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -184,6 +229,48 @@ function splitHighlight(
 }
 
 /*
+ * Build inner <tspan> markup for a single line:
+ *  - words separated by an explicit figure-space tspan (never a raw
+ *    space between Bengali clusters, which resvg would swallow)
+ *  - each word split into Bengali / Latin runs for correct fonts
+ *  - highlighted phrases coloured yellow
+ */
+function buildInner(
+  text: string,
+  phrases: string[],
+  fill: string
+) {
+  const parts = splitHighlight(text, phrases);
+
+  let first = true;
+  let out = "";
+
+  for (const part of parts) {
+    const color = part.yellow ? "#ffd400" : fill;
+
+    const words = String(part.text || "")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+
+    for (const word of words) {
+      if (!first) {
+        out += `<tspan font-family="${LATIN_FONT_FAMILY}">${FIGURE_SPACE}</tspan>`;
+      }
+      first = false;
+
+      for (const run of scriptRuns(word)) {
+        out += `<tspan fill="${color}" font-family="${
+          run.latin ? LATIN_FONT_FAMILY : BENGALI_FONT_FAMILY
+        }">${esc(run.text)}</tspan>`;
+      }
+    }
+  }
+
+  return out;
+}
+
+/*
  * Render one Bengali text line.
  *
  * IMPORTANT:
@@ -198,16 +285,7 @@ function lineTextSvg(
   fontSize: number,
   fill = "#ffffff"
 ) {
-  const parts = splitHighlight(text, phrases);
-
-  const tspans = parts
-    .map(
-      (part) =>
-        `<tspan fill="${
-          part.yellow ? "#ffd400" : fill
-        }">${esc(part.text)}</tspan>`
-    )
-    .join("");
+  const tspans = buildInner(text, phrases, fill);
 
   return `
     <text
@@ -263,6 +341,13 @@ export async function renderPoster(args: {
     "public",
     "assets",
     "NotoSerifBengali-Bold.ttf"
+  );
+
+  const latinFontPath = path.join(
+    process.cwd(),
+    "public",
+    "assets",
+    "NotoSans-SemiBold.ttf"
   );
 
   /*
@@ -575,7 +660,7 @@ export async function renderPoster(args: {
   <text
     x="${d.logo_right || 100}"
     y="${(d.logo_top || topPadding) + 44}"
-    font-family="DejaVu Sans"
+    font-family="${LATIN_FONT_FAMILY}"
     font-size="34px"
     font-weight="700"
     fill="#ffffff"
@@ -585,7 +670,7 @@ export async function renderPoster(args: {
       stroke:rgba(0,0,0,.22);
       stroke-width:1px;
     "
-  >sciencebee.com.bd</text>
+  ><tspan font-family="${LATIN_FONT_FAMILY}">sciencebee.com.bd</tspan></text>
 
   <!-- Source pill -->
   <rect
@@ -613,7 +698,7 @@ export async function renderPoster(args: {
     font-size="${sourceFont}px"
     font-weight="700"
     fill="#ffffff"
-  >${esc(sourceText)}</text>
+  >${buildInner(sourceText, [], "#ffffff")}</text>
 
   <!-- Headline -->
   ${headlineSvg}
@@ -638,7 +723,7 @@ export async function renderPoster(args: {
     font-size="30px"
     font-weight="700"
     fill="#ffffff"
-  >বিজ্ঞান, প্রযুক্তি ও গবেষণা</text>
+  >${buildInner("বিজ্ঞান, প্রযুক্তি ও গবেষণা", [], "#ffffff")}</text>
 
 </svg>
 `;
@@ -657,7 +742,7 @@ export async function renderPoster(args: {
     },
 
     font: {
-      fontFiles: [fontPath],
+      fontFiles: [fontPath, latinFontPath],
 
       loadSystemFonts: false,
 
@@ -668,7 +753,7 @@ export async function renderPoster(args: {
         BENGALI_FONT_FAMILY,
 
       sansSerifFamily:
-        BENGALI_FONT_FAMILY,
+        LATIN_FONT_FAMILY,
     },
 
     textRendering: 2,
