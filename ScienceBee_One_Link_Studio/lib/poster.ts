@@ -178,14 +178,20 @@ function drawCenteredLine(
 
 function coverDraw(
   ctx: SKRSContext2D,
-  img: Awaited<ReturnType<typeof loadImage>>
+  img: Awaited<ReturnType<typeof loadImage>>,
+  zoomPct: number,
+  offsetY: number
 ) {
   const iw = img.width;
   const ih = img.height;
-  const scale = Math.max(W / iw, H / ih);
+  // never below cover scale, so the frame is always filled
+  const zoom = Math.max(1, zoomPct / 100);
+  const scale = Math.max(W / iw, H / ih) * zoom;
   const dw = iw * scale;
   const dh = ih * scale;
-  ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
+  const x = (W - dw) / 2;
+  const y = (H - dh) / 2 + offsetY; // + moves the image (and its subject) DOWN
+  ctx.drawImage(img, x, y, dw, dh);
 }
 
 export async function renderPoster(args: {
@@ -218,7 +224,12 @@ export async function renderPoster(args: {
 
   /* main photograph, cover-fit */
   const photo = await loadImage(args.image);
-  coverDraw(ctx, photo);
+  coverDraw(
+    ctx,
+    photo,
+    clamp(num(d.image_zoom, 100), 100, 260),
+    clamp(num(d.image_offset_y, 0), -1000, 1000)
+  );
 
   /* overall darkening */
   const darkening = clamp(num(d.darkening, 0.08), 0, 0.6);
