@@ -75,6 +75,8 @@ export async function POST(req: Request) {
     if (up.error) throw up.error;
 
     const { data: pub } = db.storage.from("posters").getPublicUrl(posterPath);
+    // version the URL so the share page (and any CDN) never serves a stale poster
+    const versionedUrl = pub.publicUrl + "?v=" + Date.now();
 
     const token = crypto.randomUUID().replace(/-/g, "");
 
@@ -88,7 +90,7 @@ export async function POST(req: Request) {
         design: b.design ?? p.design,
         image_url: imageUrl, // persist the currently selected image
         poster_path: posterPath,
-        poster_url: pub.publicUrl,
+        poster_url: versionedUrl,
       })
       .eq("id", p.id);
 
@@ -98,7 +100,7 @@ export async function POST(req: Request) {
     );
 
     return NextResponse.json({
-      poster_url: pub.publicUrl,
+      poster_url: versionedUrl,
       share_url: `/share/${token}`,
     });
   } catch (e: any) {
