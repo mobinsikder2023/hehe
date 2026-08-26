@@ -17,6 +17,13 @@ export type Design = {
   photo_top: number;
   image_zoom: number;
   image_offset_y: number;
+  bg_solid: boolean;
+  fg_url: string;
+  fg_scale: number;
+  fg_x: number;
+  fg_y: number;
+  concept_enabled: boolean;
+  concept_text: string;
   fade_length: number;
   darkening: number;
   shadow_color: string;
@@ -55,6 +62,13 @@ export const DEFAULT_DESIGN: Design = {
   photo_top: 820,
   image_zoom: 100,
   image_offset_y: 0,
+  bg_solid: false,
+  fg_url: "",
+  fg_scale: 100,
+  fg_x: 0,
+  fg_y: 0,
+  concept_enabled: false,
+  concept_text: "Concept Image",
   fade_length: 920,
   darkening: 0.08,
   shadow_color: "#000000",
