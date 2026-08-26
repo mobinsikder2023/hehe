@@ -14,25 +14,24 @@ async function fetchBytes(url: string): Promise<Buffer> {
 }
 
 /*
- * Turn any photo into a transparent cut-out using remove.bg.
- * Requires REMOVE_BG_API_KEY in the environment (free tier: 50/month).
- * A free key: https://www.remove.bg/api
+ * Turn any photo into a transparent cut-out using the free, self-hosted
+ * `withoutbg` service (see bg_service.py). No API key, no per-image cost.
+ * Configure its URL with BG_SERVICE_URL (defaults to the local service).
  */
 async function removeBackground(bytes: Buffer): Promise<Buffer> {
-  const key = process.env.REMOVE_BG_API_KEY;
-  if (!key) {
+  const endpoint =
+    process.env.BG_SERVICE_URL || "http://127.0.0.1:8600/remove";
+  const fd = new FormData();
+  fd.append("file", new Blob([new Uint8Array(bytes)]), "image.png");
+
+  let r: Response;
+  try {
+    r = await fetch(endpoint, { method: "POST", body: fd });
+  } catch {
     throw new Error(
-      "Auto background removal is not set up. Add REMOVE_BG_API_KEY, or upload a PNG that is already a cut-out."
+      "Background remover is not reachable. Is the bg_service running? (see setup)"
     );
   }
-  const fd = new FormData();
-  fd.append("image_file", new Blob([new Uint8Array(bytes)]), "image.png");
-  fd.append("size", "auto");
-  const r = await fetch("https://api.remove.bg/v1.0/removebg", {
-    method: "POST",
-    headers: { "X-Api-Key": key },
-    body: fd,
-  });
   if (!r.ok) {
     const t = await r.text().catch(() => "");
     throw new Error("Background removal failed: " + t.slice(0, 160));
