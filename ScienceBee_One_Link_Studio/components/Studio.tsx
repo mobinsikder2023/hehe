@@ -366,6 +366,11 @@ export default function Studio({ userEmail }: { userEmail: string }) {
                   </select>
                 </div>
               </div>
+              {design.layout === "text_bottom" && (
+                <div className="row3">
+                  {sizeSlider("Text lift (from bottom)", "text_bottom", 40, 1200, 10, false, "px")}
+                </div>
+              )}
               {design.concept_enabled && (
                 <div className="field">
                   <label>Concept label text</label>
