@@ -30,6 +30,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Post not found" }, { status: 404 });
     }
 
+    // use the image the client currently has selected (upload / pasted URL /
+    // candidate), falling back to whatever is stored on the post
     const imageUrl = b.image_url || p.image_url;
 
     if (!imageUrl) {
@@ -41,8 +43,20 @@ export async function POST(req: Request) {
 
     const img = await downloadImage(imageUrl);
 
+    // optional foreground cut-out (a PNG that sits on top of the background)
+    let foreground: Buffer | null = null;
+    const fgUrl = b.design?.fg_url || p.design?.fg_url;
+    if (fgUrl) {
+      try {
+        foreground = await downloadImage(fgUrl);
+      } catch {
+        foreground = null;
+      }
+    }
+
     const png = await renderPoster({
       image: img,
+      foreground,
       headline: String(b.headline || p.headline || ""),
       subheadline: String(b.subheadline || p.subheadline || ""),
       source: String(b.source || p.source_label || ""),
@@ -53,20 +67,16 @@ export async function POST(req: Request) {
 
     const posterPath = `${user.id}/${p.id}.png`;
 
-    const up = await db.storage
-      .from("posters")
-      .upload(posterPath, png, {
-        contentType: "image/png",
-        upsert: true,
-      });
+    const up = await db.storage.from("posters").upload(posterPath, png, {
+      contentType: "image/png",
+      upsert: true,
+    });
 
     if (up.error) throw up.error;
 
-    const { data: pub } = db.storage
-      .from("posters")
-      .getPublicUrl(posterPath);
+    const { data: pub } = db.storage.from("posters").getPublicUrl(posterPath);
 
-    const token = crypto.randomUUID().replaceAll("-", "");
+    const token = crypto.randomUUID().replace(/-/g, "");
 
     await db
       .from("posts")
@@ -76,16 +86,14 @@ export async function POST(req: Request) {
         source_label: b.source ?? p.source_label,
         caption: p.caption,
         design: b.design ?? p.design,
+        image_url: imageUrl, // persist the currently selected image
         poster_path: posterPath,
         poster_url: pub.publicUrl,
       })
       .eq("id", p.id);
 
     await db.from("share_links").upsert(
-      {
-        post_id: p.id,
-        token,
-      },
+      { post_id: p.id, token },
       { onConflict: "post_id" }
     );
 
@@ -95,12 +103,8 @@ export async function POST(req: Request) {
     });
   } catch (e: any) {
     console.error("POSTER_RENDER_ERROR:", e);
-
     return NextResponse.json(
-      {
-        error: e?.message || "Render failed",
-        stack: process.env.NODE_ENV === "development" ? e?.stack : undefined,
-      },
+      { error: e?.message || "Render failed" },
       { status: 500 }
     );
   }
