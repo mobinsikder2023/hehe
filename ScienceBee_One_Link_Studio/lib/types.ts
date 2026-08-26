@@ -15,6 +15,8 @@ export type Design = {
   subheadline_color: string;
   line_height: number;
   photo_top: number;
+  image_zoom: number;
+  image_offset_y: number;
   fade_length: number;
   darkening: number;
   shadow_color: string;
@@ -40,26 +42,28 @@ export const DEFAULT_DESIGN: Design = {
   headline_width: 1840,
   headline_top: 340,
   headline_x: 0,
-  headline_font_size: 112,
+  headline_font_size: 148,
   headline_max_height: 400,
   headline_color: "#ffffff",
   highlight_color: "#ffd400",
-  subheadline_font_size: 56,
+  subheadline_font_size: 72,
   subheadline_x: 0,
-  subheadline_y: 15,
+  subheadline_y: 40,
   subheadline_width: 1840,
   subheadline_color: "#ffffff",
   line_height: 1.1,
   photo_top: 820,
-  fade_length: 650,
+  image_zoom: 100,
+  image_offset_y: 0,
+  fade_length: 920,
   darkening: 0.08,
-  shadow_color: "#17234a",
-  logo: "light",
-  logo_width: 220,
+  shadow_color: "#000000",
+  logo: "dark",
+  logo_width: 380,
   logo_top: 64,
   logo_right: 100,
   source_font_size: 34,
-  domain_font_size: 34,
+  domain_font_size: 46,
   source_x: 0,
   source_top: 0,
   source_bg: "#24428e",
