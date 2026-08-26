@@ -1,11 +1,12 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { DEFAULT_DESIGN, Design, Candidate } from "@/lib/types";
 
 export default function Studio({ userEmail }: { userEmail: string }) {
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const [post, setPost] = useState<any>(null);
   const [caption, setCaption] = useState("");
@@ -15,6 +16,10 @@ export default function Studio({ userEmail }: { userEmail: string }) {
 
   const patch = (k: keyof Design, v: any) =>
     setDesign((x) => ({ ...x, [k]: v }));
+
+  // keep latest state for the debounced auto-render
+  const stateRef = useRef({ post, design });
+  stateRef.current = { post, design };
 
   async function generate() {
     if (!url.trim()) return;
@@ -33,7 +38,7 @@ export default function Studio({ userEmail }: { userEmail: string }) {
       setCaption(j.post.caption);
       setDesign({ ...DEFAULT_DESIGN, ...j.post.design });
       setCands(j.candidates || []);
-      setMsg("Draft ready. Review the copy and image, then render.");
+      setMsg("Draft ready — the poster updates live as you edit.");
     } catch (e: any) {
       setMsg(e.message);
     } finally {
@@ -41,10 +46,12 @@ export default function Studio({ userEmail }: { userEmail: string }) {
     }
   }
 
-  async function render() {
-    if (!post) return;
-    setBusy(true);
-    setMsg("Rendering 4K poster…");
+  // Re-render the poster image. This does NOT call OpenAI — it only
+  // redraws the PNG on the server, so live editing costs no AI usage.
+  const autoSave = useCallback(async () => {
+    const { post, design } = stateRef.current;
+    if (!post || !post.image_url) return;
+    setSaving(true);
     try {
       const r = await fetch("/api/render", {
         method: "POST",
@@ -59,16 +66,52 @@ export default function Studio({ userEmail }: { userEmail: string }) {
         }),
       });
       const j = await r.json();
-      if (!r.ok) throw Error(j.error || "Render failed");
-      const fresh =
-        j.poster_url + (j.poster_url.includes("?") ? "&" : "?") + "v=" + Date.now();
-      setPost((p: any) => ({ ...p, poster_url: fresh }));
-      setShare(j.share_url || "");
-      setMsg("Poster saved. Share link is ready.");
-    } catch (e: any) {
-      setMsg(e.message);
+      if (r.ok) {
+        const fresh =
+          j.poster_url +
+          (j.poster_url.includes("?") ? "&" : "?") +
+          "v=" +
+          Date.now();
+        setPost((p: any) => ({ ...p, poster_url: fresh }));
+        setShare(j.share_url || "");
+      }
+    } catch {
+      /* ignore transient errors during live editing */
     } finally {
-      setBusy(false);
+      setSaving(false);
+    }
+  }, []);
+
+  // debounce: whenever the copy or the design changes, re-render ~0.6s later
+  useEffect(() => {
+    if (!post) return;
+    const t = setTimeout(() => autoSave(), 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    design,
+    post?.headline_bn,
+    post?.subheadline_bn,
+    post?.source_label,
+    JSON.stringify(post?.yellow_phrases),
+    post?.image_url,
+  ]);
+
+  async function download() {
+    if (!post?.poster_url) return;
+    try {
+      const r = await fetch(post.poster_url, { cache: "no-store" });
+      const b = await r.blob();
+      const u = URL.createObjectURL(b);
+      const a = document.createElement("a");
+      a.href = u;
+      a.download = "sciencebee-poster.png";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(u);
+    } catch {
+      window.open(post.poster_url, "_blank");
     }
   }
 
@@ -173,11 +216,10 @@ export default function Studio({ userEmail }: { userEmail: string }) {
             <h3>Design</h3>
 
             <div className="sectiontitle">Text size</div>
-            {sizeSlider("Headline", "headline_font_size", 0, 200, 2, true)}
-            {sizeSlider("Subheading", "subheadline_font_size", 0, 130, 2, true)}
+            {sizeSlider("Headline", "headline_font_size", 40, 200, 2, true)}
+            {sizeSlider("Subheading", "subheadline_font_size", 24, 130, 2, true)}
             {sizeSlider("Source", "source_font_size", 20, 60)}
             {sizeSlider("Domain (sciencebee.com.bd)", "domain_font_size", 18, 72)}
-            {sizeSlider("Footer", "footer_font_size", 18, 60)}
 
             <div className="section">
               <div className="sectiontitle">Image &amp; frame</div>
@@ -205,12 +247,10 @@ export default function Studio({ userEmail }: { userEmail: string }) {
               <div className="row3">
                 {colorField("Headline", "headline_color")}
                 {colorField("Highlight", "highlight_color")}
-                {colorField("Subheading", "subheadline_color")}
+                {colorField("Fade", "shadow_color")}
               </div>
               <div className="row3">
-                {colorField("Fade", "shadow_color")}
                 {colorField("Source txt", "source_text_color")}
-                {colorField("Footer bar", "footer_color")}
               </div>
             </div>
 
@@ -235,9 +275,9 @@ export default function Studio({ userEmail }: { userEmail: string }) {
                     value={design.logo}
                     onChange={(e) => patch("logo", e.target.value)}
                   >
-                    <option value="auto">Auto</option>
                     <option value="light">Light</option>
                     <option value="dark">Dark</option>
+                    <option value="auto">Auto</option>
                     <option value="none">None</option>
                   </select>
                 </div>
@@ -249,18 +289,27 @@ export default function Studio({ userEmail }: { userEmail: string }) {
                       patch("footer_enabled", e.target.value === "on")
                     }
                   >
-                    <option value="on">Show</option>
                     <option value="off">Hide</option>
+                    <option value="on">Show</option>
                   </select>
                 </div>
               </div>
-              <div className="field">
-                <label>Footer text</label>
-                <input
-                  value={design.footer_text}
-                  onChange={(e) => patch("footer_text", e.target.value)}
-                />
-              </div>
+
+              {design.footer_enabled && (
+                <>
+                  <div className="row3">
+                    {colorField("Footer bar", "footer_color")}
+                    {sizeSlider("Footer size", "footer_font_size", 18, 60)}
+                  </div>
+                  <div className="field">
+                    <label>Footer text</label>
+                    <input
+                      value={design.footer_text}
+                      onChange={(e) => patch("footer_text", e.target.value)}
+                    />
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -269,13 +318,18 @@ export default function Studio({ userEmail }: { userEmail: string }) {
               <img src={post.poster_url} alt="poster preview" />
             ) : (
               <div className="empty">
-                Press <b>Render &amp; save poster</b> to preview.
+                {saving ? "Rendering…" : "Pick an image to see the preview."}
               </div>
             )}
           </div>
 
           <div className="pane">
-            <h3>Content</h3>
+            <div className="contenthead">
+              <h3 style={{ margin: 0 }}>Content</h3>
+              <span className="savestate">
+                {saving ? "Updating…" : post.poster_url ? "Saved ✓" : ""}
+              </span>
+            </div>
 
             <div className="field">
               <label>Main Bengali headline</label>
@@ -314,7 +368,7 @@ export default function Studio({ userEmail }: { userEmail: string }) {
             </div>
 
             <div className="field">
-              <label>Source</label>
+              <label>Source (media name only)</label>
               <input
                 value={post.source_label}
                 onChange={(e) =>
@@ -376,8 +430,12 @@ export default function Studio({ userEmail }: { userEmail: string }) {
             </div>
 
             <div className="btnrow" style={{ marginTop: 10 }}>
-              <button className="btn yellow" onClick={render} disabled={busy}>
-                {busy ? "Rendering…" : "Render & save poster"}
+              <button
+                className="btn yellow"
+                onClick={download}
+                disabled={!post.poster_url}
+              >
+                ⬇ Download poster
               </button>
               {share && (
                 <button
