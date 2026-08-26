@@ -203,7 +203,7 @@ export default function Studio({ userEmail }: { userEmail: string }) {
     <div className="shell">
       <header className="topbar">
         <div className="brand">
-          <img src="/assets/logo_light.png" />
+          <img src="/assets/logo_dark.png" />
           <div>
             <strong>Science Bee One-Link Studio</strong>
             <span>Editorial automation · 4:5 · 2160×2700</span>
@@ -355,7 +355,16 @@ export default function Studio({ userEmail }: { userEmail: string }) {
                     <option value="on">On</option>
                   </select>
                 </div>
-                <div className="field" />
+                <div className="field">
+                  <label>Layout</label>
+                  <select
+                    value={design.layout}
+                    onChange={(e) => patch("layout", e.target.value)}
+                  >
+                    <option value="text_top">Text top</option>
+                    <option value="text_bottom">Image top / text bottom</option>
+                  </select>
+                </div>
               </div>
               {design.concept_enabled && (
                 <div className="field">
@@ -452,7 +461,16 @@ export default function Studio({ userEmail }: { userEmail: string }) {
             <div className="section">
               <div className="sectiontitle">
                 <span>Image</span>
-                <span className="muted">upload or pick</span>
+                {post.image_url ? (
+                  <button
+                    className="btn"
+                    onClick={() => setPost({ ...post, image_url: "" })}
+                  >
+                    Remove
+                  </button>
+                ) : (
+                  <span className="muted">upload or pick</span>
+                )}
               </div>
               <input
                 type="file"
