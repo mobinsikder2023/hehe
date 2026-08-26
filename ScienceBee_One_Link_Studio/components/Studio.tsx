@@ -13,6 +13,7 @@ export default function Studio({ userEmail }: { userEmail: string }) {
   const [design, setDesign] = useState<Design>(DEFAULT_DESIGN);
   const [cands, setCands] = useState<Candidate[]>([]);
   const [share, setShare] = useState("");
+  const [imgLink, setImgLink] = useState("");
 
   const patch = (k: keyof Design, v: any) =>
     setDesign((x) => ({ ...x, [k]: v }));
@@ -126,11 +127,12 @@ export default function Studio({ userEmail }: { userEmail: string }) {
     min: number,
     max: number,
     step = 2,
-    auto = false
+    auto = false,
+    unit = "px"
   ) => {
     const raw = design[key] as number | null;
-    const val = raw || min;
-    const shown = auto && !raw ? "Auto" : `${val}px`;
+    const val = raw ?? min;
+    const shown = auto && !raw ? "Auto" : `${val}${unit}`;
     return (
       <div className="field">
         <label>
@@ -226,6 +228,8 @@ export default function Studio({ userEmail }: { userEmail: string }) {
               {sizeSlider("Fade length", "fade_length", 300, 1700, 10)}
               {sizeSlider("Darkening ×100", "darkening", 0, 60, 1)}
               {sizeSlider("Logo width", "logo_width", 120, 520, 5)}
+              {sizeSlider("Image zoom", "image_zoom", 100, 260, 2, false, "%")}
+              {sizeSlider("Image shift down", "image_offset_y", -1000, 1000, 10, false, "px")}
             </div>
 
             <div className="section">
@@ -400,6 +404,23 @@ export default function Studio({ userEmail }: { userEmail: string }) {
                   if (r.ok) setPost({ ...post, image_url: j.image_url });
                 }}
               />
+              <div style={{ display: "flex", gap: 6, marginTop: 7 }}>
+                <input
+                  placeholder="…or paste an image URL"
+                  value={imgLink}
+                  onChange={(e) => setImgLink(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                <button
+                  className="btn"
+                  onClick={() => {
+                    const u = imgLink.trim();
+                    if (u) setPost({ ...post, image_url: u });
+                  }}
+                >
+                  Use
+                </button>
+              </div>
               <div className="candidates">
                 {cands.map((c, i) => (
                   <button
