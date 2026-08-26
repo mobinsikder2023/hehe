@@ -196,6 +196,7 @@ function coverDraw(
 
 export async function renderPoster(args: {
   image: Buffer;
+  foreground?: Buffer | null;
   headline: string;
   subheadline: string;
   source: string;
@@ -222,14 +223,16 @@ export async function renderPoster(args: {
   ctx.fillStyle = shadow;
   ctx.fillRect(0, 0, W, H);
 
-  /* main photograph, cover-fit */
-  const photo = await loadImage(args.image);
-  coverDraw(
-    ctx,
-    photo,
-    clamp(num(d.image_zoom, 100), 100, 260),
-    clamp(num(d.image_offset_y, 0), -1000, 1000)
-  );
+  /* main background: photo (cover-fit) OR a solid colour */
+  if (!d.bg_solid) {
+    const photo = await loadImage(args.image);
+    coverDraw(
+      ctx,
+      photo,
+      clamp(num(d.image_zoom, 100), 100, 260),
+      clamp(num(d.image_offset_y, 0), -1000, 1000)
+    );
+  }
 
   /* overall darkening */
   const darkening = clamp(num(d.darkening, 0.08), 0, 0.6);
@@ -247,6 +250,18 @@ export async function renderPoster(args: {
   topGrad.addColorStop(1, hexA(shadow, 0));
   ctx.fillStyle = topGrad;
   ctx.fillRect(0, 0, W, scrimH);
+
+  /* foreground subject (a cut-out PNG) — sits above the background,
+     anchored to the bottom so a person/object "stands" in the lower area */
+  if (args.foreground) {
+    const fg = await loadImage(args.foreground);
+    const fgScale = clamp(num(d.fg_scale, 100), 20, 220) / 100;
+    const fgW = W * 0.72 * fgScale;
+    const fgH = (fg.height / fg.width) * fgW;
+    const fx = (W - fgW) / 2 + num(d.fg_x, 0);
+    const fy = H - fgH + num(d.fg_y, 0);
+    ctx.drawImage(fg, fx, fy, fgW, fgH);
+  }
 
   /* logo (top-right) — "none" hides it */
   const logoTop = num(d.logo_top, 64);
@@ -364,6 +379,19 @@ export async function renderPoster(args: {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(sourceText, pillCX, pillY + pillH / 2 + 2);
+  }
+
+  /* ---- "Concept Image" label (optional, low opacity) ---- */
+  if (d.concept_enabled) {
+    const label = String(d.concept_text ?? "Concept Image").trim();
+    if (label) {
+      const cy = d.footer_enabled !== false ? H - 130 : H - 34;
+      ctx.font = fontStr(30);
+      ctx.fillStyle = "rgba(255,255,255,0.55)";
+      ctx.textAlign = "right";
+      ctx.textBaseline = "bottom";
+      ctx.fillText(label, W - 44, cy);
+    }
   }
 
   /* ---- footer bar (optional) ---- */
