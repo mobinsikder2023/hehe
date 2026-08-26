@@ -47,7 +47,7 @@ export type Design = {
 export const DEFAULT_DESIGN: Design = {
   composition: "image_first",
   layout: "text_top",
-  text_bottom: 140,
+  text_bottom: 300,
   headline_width: 1840,
   headline_top: 340,
   headline_x: 0,
