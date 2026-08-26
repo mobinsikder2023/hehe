@@ -64,7 +64,7 @@ function repairMojibake(value: string) {
 
 /*
  * A font string that lets Skia fall back from Bengali to Latin so
- * mixed strings ("সূত্র: Space") render every glyph.
+ * mixed strings ("সোর্স: Space") render every glyph.
  */
 function fontStr(size: number) {
   return `700 ${Math.round(size)}px "${BENGALI}", "${LATIN}"`;
@@ -321,7 +321,7 @@ export async function renderPoster(args: {
   /* ---- source pill (below the text block) ---- */
   const src = String(args.source || "").trim();
   if (src) {
-    const sourceText = `সূত্র: ${repairMojibake(src)}`;
+    const sourceText = `সোর্স: ${repairMojibake(src)}`;
     const sourceFont = clamp(num(d.source_font_size, 34), 22, 46);
 
     ctx.font = fontStr(sourceFont);
