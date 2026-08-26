@@ -252,7 +252,8 @@ export async function renderPoster(args: {
   }
 
   /* domain (top-left) */
-  ctx.font = `700 34px "${LATIN}"`;
+  const domainSize = clamp(num(d.domain_font_size, 34), 18, 72);
+  ctx.font = `700 ${domainSize}px "${LATIN}"`;
   ctx.fillStyle = "#ffffff";
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
@@ -365,7 +366,7 @@ export async function renderPoster(args: {
     ctx.fillRect(0, footerY, W, footerH);
 
     if (footerText.trim()) {
-      ctx.font = fontStr(30);
+      ctx.font = fontStr(clamp(num(d.footer_font_size, 30), 18, 60));
       ctx.fillStyle = "#ffffff";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
