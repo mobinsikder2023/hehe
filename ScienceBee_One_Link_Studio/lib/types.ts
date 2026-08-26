@@ -1,5 +1,6 @@
 export type Design = {
   composition: "image_first" | "text_first";
+  layout: "text_top" | "text_bottom";
   text_bottom: number;
   headline_width: number;
   headline_top: number;
@@ -45,6 +46,7 @@ export type Design = {
 
 export const DEFAULT_DESIGN: Design = {
   composition: "image_first",
+  layout: "text_top",
   text_bottom: 140,
   headline_width: 1840,
   headline_top: 340,
