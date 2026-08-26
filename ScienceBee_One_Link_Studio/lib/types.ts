@@ -23,6 +23,7 @@ export type Design = {
   logo_top: number;
   logo_right: number;
   source_font_size: number;
+  domain_font_size: number;
   source_x: number;
   source_top: number;
   source_bg: string;
@@ -30,6 +31,7 @@ export type Design = {
   footer_enabled: boolean;
   footer_text: string;
   footer_color: string;
+  footer_font_size: number;
 };
 
 export const DEFAULT_DESIGN: Design = {
@@ -57,6 +59,7 @@ export const DEFAULT_DESIGN: Design = {
   logo_top: 64,
   logo_right: 100,
   source_font_size: 34,
+  domain_font_size: 34,
   source_x: 0,
   source_top: 0,
   source_bg: "#24428e",
@@ -64,6 +67,7 @@ export const DEFAULT_DESIGN: Design = {
   footer_enabled: true,
   footer_text: "বিজ্ঞান, প্রযুক্তি ও গবেষণা",
   footer_color: "#24428e",
+  footer_font_size: 30,
 };
 
 export type Candidate = {
