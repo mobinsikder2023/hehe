@@ -241,15 +241,28 @@ export async function renderPoster(args: {
     ctx.fillRect(0, 0, W, H);
   }
 
-  /* top scrim so text stays readable; height driven by fade_length */
-  const scrimH = clamp(num(d.fade_length, 650) * 1.7, 700, 1700);
-  const topGrad = ctx.createLinearGradient(0, 0, 0, scrimH);
-  topGrad.addColorStop(0, hexA(shadow, 0.96));
-  topGrad.addColorStop(0.28, hexA(shadow, 0.86));
-  topGrad.addColorStop(0.6, hexA(shadow, 0.5));
-  topGrad.addColorStop(1, hexA(shadow, 0));
-  ctx.fillStyle = topGrad;
-  ctx.fillRect(0, 0, W, scrimH);
+  /* scrim so text stays readable; height driven by fade_length.
+     text_top    -> dark at the TOP fading down
+     text_bottom -> dark at the BOTTOM fading up (image stays visible on top) */
+  const layout = d.layout === "text_bottom" ? "text_bottom" : "text_top";
+  const scrimH = clamp(num(d.fade_length, 650) * 1.7, 700, 1900);
+  if (layout === "text_bottom") {
+    const g = ctx.createLinearGradient(0, H, 0, H - scrimH);
+    g.addColorStop(0, hexA(shadow, 0.97));
+    g.addColorStop(0.32, hexA(shadow, 0.9));
+    g.addColorStop(0.65, hexA(shadow, 0.55));
+    g.addColorStop(1, hexA(shadow, 0));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, H - scrimH, W, scrimH);
+  } else {
+    const g = ctx.createLinearGradient(0, 0, 0, scrimH);
+    g.addColorStop(0, hexA(shadow, 0.96));
+    g.addColorStop(0.28, hexA(shadow, 0.86));
+    g.addColorStop(0.6, hexA(shadow, 0.5));
+    g.addColorStop(1, hexA(shadow, 0));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, scrimH);
+  }
 
   /* foreground subject (a cut-out PNG) — sits above the background,
      anchored to the bottom so a person/object "stands" in the lower area */
@@ -289,96 +302,96 @@ export async function renderPoster(args: {
   ctx.fillText("sciencebee.com.bd", logoRight, logoTop + 44);
   ctx.restore();
 
-  /* ---- headline ---- */
+  /* ---- fit the text blocks ---- */
   const centerX = W / 2 + num(d.headline_x, 0);
   const headlineWidth = clamp(num(d.headline_width, 1840), 1200, 2040);
-
   const headline = repairMojibake(args.headline || "");
   const hPref = d.headline_font_size ? num(d.headline_font_size, 112) : 116;
   const hFit = fitText(ctx, headline, headlineWidth - 120, hPref, 64, 3);
   const hLineH = Math.round(hFit.size * 1.16);
+  const hBlockH = hFit.lines.length * hLineH;
 
-  const headlineTop = clamp(num(d.headline_top, 360), 200, 1400);
-
-  hFit.lines.forEach((line, i) => {
-    drawCenteredLine(
-      ctx,
-      line,
-      args.phrases || [],
-      centerX,
-      headlineTop + i * hLineH + hFit.size,
-      hFit.size,
-      headlineColor,
-      highlightColor
-    );
-  });
-
-  const headlineBottom = headlineTop + hFit.lines.length * hLineH;
-
-  /* ---- supporting line ---- */
   const sub = repairMojibake(args.subheadline || "");
-  let subBottom = headlineBottom;
+  const subWidth = clamp(num(d.subheadline_width, 1780), 1100, 1960);
+  const sPref = d.subheadline_font_size ? num(d.subheadline_font_size, 52) : 54;
+  const sFit = sub.trim() ? fitText(ctx, sub, subWidth - 120, sPref, 32, 2) : null;
+  const sLineH = sFit ? Math.round(sFit.size * 1.2) : 0;
+  const sBlockH = sFit ? sFit.lines.length * sLineH : 0;
 
-  if (sub.trim()) {
-    const subWidth = clamp(num(d.subheadline_width, 1780), 1100, 1960);
-    const sPref = d.subheadline_font_size
-      ? num(d.subheadline_font_size, 52)
-      : 54;
-    const sFit = fitText(ctx, sub, subWidth - 120, sPref, 32, 2);
-    const sLineH = Math.round(sFit.size * 1.2);
-    const subTop = headlineBottom + 10 + num(d.subheadline_y, 24);
-
-    sFit.lines.forEach((line, i) => {
-      drawCenteredLine(
-        ctx,
-        line,
-        args.phrases || [],
-        centerX,
-        subTop + i * sLineH + sFit.size,
-        sFit.size,
-        subColor,
-        highlightColor
-      );
-    });
-
-    subBottom = subTop + sFit.lines.length * sLineH;
-  }
-
-  /* ---- source pill (below the text block) ---- */
   const src = String(args.source || "").trim();
-  if (src) {
-    const sourceText = `সোর্স: ${repairMojibake(src)}`;
-    const sourceFont = clamp(num(d.source_font_size, 34), 22, 46);
+  const sourceFont = clamp(num(d.source_font_size, 34), 22, 46);
+  const pillH = sourceFont + 40;
+  const subGap = num(d.subheadline_y, 24);
 
+  const drawHeadline = (topY: number) =>
+    hFit.lines.forEach((line, i) =>
+      drawCenteredLine(
+        ctx, line, args.phrases || [], centerX,
+        topY + i * hLineH + hFit.size, hFit.size, headlineColor, highlightColor
+      )
+    );
+
+  const drawSub = (topY: number) => {
+    if (!sFit) return;
+    sFit.lines.forEach((line, i) =>
+      drawCenteredLine(
+        ctx, line, args.phrases || [], centerX,
+        topY + i * sLineH + sFit.size, sFit.size, subColor, highlightColor
+      )
+    );
+  };
+
+  const drawSource = (topY: number) => {
+    if (!src) return;
+    const sourceText = `\u09B8\u09CB\u09B0\u09CD\u09B8: ${repairMojibake(src)}`;
     ctx.font = fontStr(sourceFont);
     const textW = ctx.measureText(sourceText).width;
-    const padX = 46;
-    const pillW = textW + padX * 2;
-    const pillH = sourceFont + 40;
-
-    const pillCX =
-      num(d.source_x, 0) !== 0 ? num(d.source_x, W / 2) : W / 2;
-    const pillY = subBottom + 34 + num(d.source_top, 0);
-
+    const pillW = textW + 92;
+    const pillCX = num(d.source_x, 0) !== 0 ? num(d.source_x, W / 2) : W / 2;
     const bg =
       d.source_bg === "transparent"
         ? null
         : validHex(d.source_bg)
         ? d.source_bg
         : "#24428e";
-
     if (bg) {
       ctx.fillStyle = bg;
       ctx.globalAlpha = 0.96;
-      roundRect(ctx, pillCX - pillW / 2, pillY, pillW, pillH, pillH / 2);
+      roundRect(ctx, pillCX - pillW / 2, topY, pillW, pillH, pillH / 2);
       ctx.fill();
       ctx.globalAlpha = 1;
     }
-
     ctx.fillStyle = sourceTextColor;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(sourceText, pillCX, pillY + pillH / 2 + 2);
+    ctx.fillText(sourceText, pillCX, topY + pillH / 2 + 2);
+  };
+
+  if (layout === "text_bottom") {
+    // image stays visible up top; stack source -> headline -> subheading,
+    // anchored to the bottom
+    const bottomPad = (d.footer_enabled !== false ? 108 : 0) + 80;
+    let cursor = H - bottomPad;
+    if (sFit) {
+      const t = cursor - sBlockH;
+      drawSub(t);
+      cursor = t - 24;
+    }
+    const headTop = cursor - hBlockH;
+    drawHeadline(headTop);
+    cursor = headTop - 28;
+    drawSource(cursor - pillH + num(d.source_top, 0));
+  } else {
+    // text_top (default): headline near the top, sub below, source below sub
+    const headlineTop = clamp(num(d.headline_top, 360), 200, 1400);
+    drawHeadline(headlineTop);
+    let subBottom = headlineTop + hBlockH;
+    if (sFit) {
+      const subTop = subBottom + 10 + subGap;
+      drawSub(subTop);
+      subBottom = subTop + sBlockH;
+    }
+    drawSource(subBottom + 34 + num(d.source_top, 0));
   }
 
   /* ---- "Concept Image" label (optional, low opacity) ---- */
