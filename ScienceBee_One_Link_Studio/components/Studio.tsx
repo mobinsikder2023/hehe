@@ -14,6 +14,7 @@ export default function Studio({ userEmail }: { userEmail: string }) {
   const [cands, setCands] = useState<Candidate[]>([]);
   const [share, setShare] = useState("");
   const [imgLink, setImgLink] = useState("");
+  const [fgRemove, setFgRemove] = useState(false);
 
   const patch = (k: keyof Design, v: any) =>
     setDesign((x) => ({ ...x, [k]: v }));
@@ -59,6 +60,7 @@ export default function Studio({ userEmail }: { userEmail: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: post.id,
+          image_url: post.image_url,
           headline: post.headline_bn,
           subheadline: post.subheadline_bn,
           source: post.source_label,
@@ -113,6 +115,27 @@ export default function Studio({ userEmail }: { userEmail: string }) {
       URL.revokeObjectURL(u);
     } catch {
       window.open(post.poster_url, "_blank");
+    }
+  }
+
+  async function uploadForeground(file: File, removeBg: boolean) {
+    if (!post) return;
+    setMsg(removeBg ? "Removing background…" : "Adding subject…");
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("id", post.id);
+    fd.append("remove_bg", removeBg ? "1" : "0");
+    try {
+      const r = await fetch("/api/foreground", { method: "POST", body: fd });
+      const j = await r.json();
+      if (r.ok) {
+        patch("fg_url", j.image_url);
+        setMsg("Subject added.");
+      } else {
+        setMsg(j.error || "Foreground failed");
+      }
+    } catch (e: any) {
+      setMsg(e.message);
     }
   }
 
@@ -232,6 +255,15 @@ export default function Studio({ userEmail }: { userEmail: string }) {
               {sizeSlider("Image shift down", "image_offset_y", -1000, 1000, 10, false, "px")}
             </div>
 
+            {design.fg_url && (
+              <div className="section">
+                <div className="sectiontitle">Subject overlay</div>
+                {sizeSlider("Subject size", "fg_scale", 20, 220, 2, false, "%")}
+                {sizeSlider("Subject X", "fg_x", -900, 900, 10, false, "px")}
+                {sizeSlider("Subject Y (up/down)", "fg_y", -1400, 400, 10, false, "px")}
+              </div>
+            )}
+
             <div className="section">
               <div className="sectiontitle">Position (px)</div>
               <div className="row3">
@@ -298,6 +330,42 @@ export default function Studio({ userEmail }: { userEmail: string }) {
                   </select>
                 </div>
               </div>
+              <div className="row3">
+                <div className="field">
+                  <label>Background</label>
+                  <select
+                    value={design.bg_solid ? "solid" : "photo"}
+                    onChange={(e) =>
+                      patch("bg_solid", e.target.value === "solid")
+                    }
+                  >
+                    <option value="photo">Photo</option>
+                    <option value="solid">Solid (fade colour)</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Concept label</label>
+                  <select
+                    value={design.concept_enabled ? "on" : "off"}
+                    onChange={(e) =>
+                      patch("concept_enabled", e.target.value === "on")
+                    }
+                  >
+                    <option value="off">Off</option>
+                    <option value="on">On</option>
+                  </select>
+                </div>
+                <div className="field" />
+              </div>
+              {design.concept_enabled && (
+                <div className="field">
+                  <label>Concept label text</label>
+                  <input
+                    value={design.concept_text}
+                    onChange={(e) => patch("concept_text", e.target.value)}
+                  />
+                </div>
+              )}
 
               {design.footer_enabled && (
                 <>
@@ -432,6 +500,42 @@ export default function Studio({ userEmail }: { userEmail: string }) {
                     <span>{c.label}</span>
                   </button>
                 ))}
+              </div>
+            </div>
+
+            <div className="section">
+              <div className="sectiontitle">
+                <span>Subject overlay (PNG)</span>
+                {design.fg_url && (
+                  <button className="btn" onClick={() => patch("fg_url", "")}>
+                    Remove
+                  </button>
+                )}
+              </div>
+              <label
+                className="muted"
+                style={{ display: "block", margin: "5px 0" }}
+              >
+                <input
+                  type="checkbox"
+                  checked={fgRemove}
+                  onChange={(e) => setFgRemove(e.target.checked)}
+                  style={{ width: "auto", marginRight: 6 }}
+                />
+                Auto-remove background (turns any photo into a cut-out)
+              </label>
+              <input
+                type="file"
+                accept="image/*"
+                style={{ width: "100%" }}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) uploadForeground(f, fgRemove);
+                }}
+              />
+              <div className="muted" style={{ marginTop: 5 }}>
+                Upload a subject photo — it will sit on top of the background.
+                Position it with the Subject sliders on the left.
               </div>
             </div>
 
