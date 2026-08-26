@@ -9,7 +9,7 @@ Produce:
 - headline_bn: one short, strong Bengali headline.
 - subheadline_bn: one useful supporting line.
 - yellow_phrases: 1–3 short phrases that are EXACT substrings of the headline or the supporting line.
-- caption_bn: a warm, human, social-media-ready Facebook caption of 10–15 coherent Bengali sentences that tells the story and its context and gently invites the reader to think. It must read like a real post written by a human editor, not a report.
+- caption_bn: an engaging, human Facebook caption written as 3–4 short PARAGRAPHS, each separated by a BLANK LINE. Pack it with the article's SPECIFIC details — real numbers, percentages, sample sizes, dates, institution and researcher names, study design, and concrete findings — never vague generalities. Structure it: (1) a hook that draws the reader in, (2) what was actually found and how the study/work was done, (3) the key data and what it means, (4) a thoughtful takeaway or question. 10–15 sentences total across the paragraphs. It must read like a knowledgeable science page — not a dry report and not generic filler.
 - source_label: ONLY the media / outlet name — for example "BBC", "Reuters", "Prothom Alo", "Nature", "Science", "Space", "The Daily Star". No dates, no article titles, no descriptions, no links. At most 3 words.
 
 STRICT RULES for caption_bn:
@@ -61,7 +61,7 @@ export async function makeEditorial(url: string) {
         role: "user",
         content: `Read and verify this news story using web search. URL: ${url}
 
-Return JSON with: headline_bn, subheadline_bn, yellow_phrases, caption_bn (10–15 sentences, NO links or citations anywhere), source_label (outlet name only, max 3 words), category, confidence, needs_editor_review, reason_for_review, visual_concept, image_search_query.`,
+Return JSON with: headline_bn, subheadline_bn, yellow_phrases, caption_bn (3–4 paragraphs separated by blank lines, 10–15 sentences, rich with concrete numbers/names/dates from the article, NO links or citations anywhere), source_label (outlet name only, max 3 words), category, confidence, needs_editor_review, reason_for_review, visual_concept, image_search_query.`,
       },
     ],
     tools: [{ type: "web_search" }],
