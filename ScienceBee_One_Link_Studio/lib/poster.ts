@@ -245,7 +245,10 @@ export async function renderPoster(args: {
      text_top    -> dark at the TOP fading down
      text_bottom -> dark at the BOTTOM fading up (image stays visible on top) */
   const layout = d.layout === "text_bottom" ? "text_bottom" : "text_top";
-  const scrimH = clamp(num(d.fade_length, 650) * 1.7, 700, 1900);
+  const scrimH =
+    layout === "text_bottom"
+      ? clamp(num(d.fade_length, 650) * 2.0, 1000, 2300)
+      : clamp(num(d.fade_length, 650) * 1.7, 700, 1900);
   if (layout === "text_bottom") {
     const g = ctx.createLinearGradient(0, H, 0, H - scrimH);
     g.addColorStop(0, hexA(shadow, 0.97));
@@ -370,7 +373,9 @@ export async function renderPoster(args: {
   if (layout === "text_bottom") {
     // image stays visible up top; stack source -> headline -> subheading,
     // anchored to the bottom
-    const bottomPad = (d.footer_enabled !== false ? 108 : 0) + 80;
+    const bottomPad =
+      (d.footer_enabled !== false ? 108 : 0) +
+      clamp(num(d.text_bottom, 300), 40, 1500);
     let cursor = H - bottomPad;
     if (sFit) {
       const t = cursor - sBlockH;
