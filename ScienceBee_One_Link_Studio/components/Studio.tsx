@@ -38,7 +38,12 @@ export default function Studio({ userEmail }: { userEmail: string }) {
       });
       const j = await r.json();
       if (!r.ok) throw Error(j.error || "Generation failed");
-      setPost(j.post);
+      // auto-pick a real Pexels photo based on the article (no prompt needed)
+      const autoImg =
+        j.candidates && j.candidates.length
+          ? j.candidates[0].url
+          : j.post.image_url;
+      setPost({ ...j.post, image_url: autoImg || j.post.image_url });
       setCaption(j.post.caption);
       setDesign({ ...DEFAULT_DESIGN, ...j.post.design });
       setCands(j.candidates || []);
