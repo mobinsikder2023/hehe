@@ -37,8 +37,13 @@ export async function POST(req: Request) {
     const h = Math.min(Math.max(Number(body.height) || 2000, 512), 2700);
     const seed = Math.floor(Math.random() * 1e9);
 
+    // push the model toward a realistic editorial photograph, not AI-art
+    const styledPrompt =
+      prompt +
+      ", photorealistic editorial photograph, natural lighting, shallow depth of field, ultra detailed, shot on DSLR, 4k, no text, no watermark, no logo";
+
     const url =
-      `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}` +
+      `https://image.pollinations.ai/prompt/${encodeURIComponent(styledPrompt)}` +
       `?width=${w}&height=${h}&nologo=true&model=flux&seed=${seed}`;
 
     let r: Response;
