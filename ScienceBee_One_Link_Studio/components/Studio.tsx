@@ -15,6 +15,8 @@ export default function Studio({ userEmail }: { userEmail: string }) {
   const [share, setShare] = useState("");
   const [imgLink, setImgLink] = useState("");
   const [fgRemove, setFgRemove] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
 
   const patch = (k: keyof Design, v: any) =>
     setDesign((x) => ({ ...x, [k]: v }));
@@ -40,6 +42,7 @@ export default function Studio({ userEmail }: { userEmail: string }) {
       setCaption(j.post.caption);
       setDesign({ ...DEFAULT_DESIGN, ...j.post.design });
       setCands(j.candidates || []);
+      setAiPrompt(j.post.visual_concept || j.post.image_search_query || "");
       setMsg("Draft ready — the poster updates live as you edit.");
     } catch (e: any) {
       setMsg(e.message);
@@ -115,6 +118,35 @@ export default function Studio({ userEmail }: { userEmail: string }) {
       URL.revokeObjectURL(u);
     } catch {
       window.open(post.poster_url, "_blank");
+    }
+  }
+
+  async function genAiBackground() {
+    if (!post) return;
+    const prompt = (aiPrompt || post.visual_concept || "").trim();
+    if (!prompt) {
+      setMsg("Type a prompt for the AI background.");
+      return;
+    }
+    setAiBusy(true);
+    setMsg("Generating AI background…");
+    try {
+      const r = await fetch("/api/aibg", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: post.id, prompt }),
+      });
+      const j = await r.json();
+      if (r.ok) {
+        setPost((p: any) => ({ ...p, image_url: j.image_url }));
+        setMsg("AI background added.");
+      } else {
+        setMsg(j.error || "AI background failed");
+      }
+    } catch (e: any) {
+      setMsg(e.message);
+    } finally {
+      setAiBusy(false);
     }
   }
 
@@ -511,6 +543,26 @@ export default function Studio({ userEmail }: { userEmail: string }) {
                 >
                   Use
                 </button>
+              </div>
+              <div style={{ marginTop: 8 }}>
+                <label className="muted" style={{ display: "block", marginBottom: 4 }}>
+                  …or generate an AI background (free)
+                </label>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <input
+                    placeholder="describe the scene…"
+                    value={aiPrompt}
+                    onChange={(e) => setAiPrompt(e.target.value)}
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    className="btn"
+                    disabled={aiBusy}
+                    onClick={genAiBackground}
+                  >
+                    {aiBusy ? "…" : "Generate"}
+                  </button>
+                </div>
               </div>
               <div className="candidates">
                 {cands.map((c, i) => (
