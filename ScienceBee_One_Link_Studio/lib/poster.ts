@@ -165,13 +165,7 @@ function drawCenteredLine(
 
   pieces.forEach((p, i) => {
     ctx.fillStyle = p.yellow ? highlightFill : baseFill;
-    // subtle shadow for legibility on photos
-    ctx.save();
-    ctx.shadowColor = "rgba(0,0,0,0.35)";
-    ctx.shadowBlur = Math.round(size * 0.06);
-    ctx.shadowOffsetY = 2;
     ctx.fillText(p.text, x, baselineY);
-    ctx.restore();
     x += widths[i];
   });
 }
