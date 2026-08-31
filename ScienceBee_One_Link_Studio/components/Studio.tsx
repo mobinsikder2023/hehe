@@ -29,7 +29,7 @@ export default function Studio({ userEmail }: { userEmail: string }) {
   async function generate() {
     if (!url.trim()) return;
     setBusy(true);
-    setMsg("Article checking, fact-checking, Bengali editorial copy writing...");
+    setMsg("Article পড়ছি, fact-checking করছি, Bengali editorial copy লিখছি…");
     setShare("");
     try {
       const r = await fetch("/api/create", {
@@ -43,7 +43,13 @@ export default function Studio({ userEmail }: { userEmail: string }) {
       // (the article's own photo, else a Pexels photo)
       setPost(j.post);
       setCaption(j.post.caption);
-      setDesign({ ...DEFAULT_DESIGN, ...j.post.design });
+      try {
+        const saved = localStorage.getItem(PREF_KEY);
+        const remembered = saved ? JSON.parse(saved) : {};
+        setDesign({ ...DEFAULT_DESIGN, ...j.post.design, ...remembered });
+      } catch {
+        setDesign({ ...DEFAULT_DESIGN, ...j.post.design });
+      }
       setCands(j.candidates || []);
       setAiPrompt(j.post.visual_concept || j.post.image_search_query || "");
       setMsg("Draft ready — the poster updates live as you edit.");
@@ -83,6 +89,12 @@ export default function Studio({ userEmail }: { userEmail: string }) {
           Date.now();
         setPost((p: any) => ({ ...p, poster_url: fresh }));
         setShare(j.share_url || "");
+        try {
+          const { fg_url, ...styleOnly } = stateRef.current.design as any;
+          localStorage.setItem(PREF_KEY, JSON.stringify(styleOnly));
+        } catch {
+          /* ignore */
+        }
       }
     } catch {
       /* ignore transient errors during live editing */
@@ -105,6 +117,17 @@ export default function Studio({ userEmail }: { userEmail: string }) {
     JSON.stringify(post?.yellow_phrases),
     post?.image_url,
   ]);
+
+  // remember the last design the user worked with (per browser)
+  const PREF_KEY = "sb_last_design";
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(PREF_KEY);
+      if (saved) setDesign((d) => ({ ...d, ...JSON.parse(saved) }));
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   useEffect(() => {
     fetch("/api/recent")
@@ -279,7 +302,7 @@ export default function Studio({ userEmail }: { userEmail: string }) {
         <input
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          placeholder="Paste an article URL"
+          placeholder="Paste a Prothom Alo, Daily Star, Reuters, BBC, Nature… article URL"
         />
         <button className="primary" onClick={generate} disabled={busy}>
           {busy ? "Working…" : "Generate"}
@@ -329,7 +352,22 @@ export default function Studio({ userEmail }: { userEmail: string }) {
       ) : (
         <div className="editor">
           <div className="pane">
-            <h3>Design</h3>
+            <div className="contenthead">
+              <h3 style={{ margin: 0 }}>Design</h3>
+              <button
+                className="btn"
+                onClick={() => {
+                  try {
+                    localStorage.removeItem(PREF_KEY);
+                  } catch {
+                    /* ignore */
+                  }
+                  setDesign(DEFAULT_DESIGN);
+                }}
+              >
+                Reset
+              </button>
+            </div>
 
             <div className="sectiontitle">Text size</div>
             {sizeSlider("Headline", "headline_font_size", 40, 320, 2, true)}
