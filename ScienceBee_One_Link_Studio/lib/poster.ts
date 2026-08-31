@@ -215,6 +215,8 @@ export async function renderPoster(args: {
   const subColor = validHex(d.subheadline_color) ? d.subheadline_color : "#ffe9a8";
   const sourceTextColor = validHex(d.source_text_color) ? d.source_text_color : "#ffffff";
   const footerColor = validHex(d.footer_color) ? d.footer_color : "#24428e";
+  const domainColor = validHex(d.domain_color) ? d.domain_color : "#ffffff";
+  const conceptColor = validHex(d.concept_color) ? d.concept_color : "#ffffff";
 
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext("2d");
@@ -251,18 +253,18 @@ export async function renderPoster(args: {
       : clamp(num(d.fade_length, 650) * 1.7, 700, 1900);
   if (layout === "text_bottom") {
     const g = ctx.createLinearGradient(0, H, 0, H - scrimH);
-    g.addColorStop(0, hexA(shadow, 0.97));
-    g.addColorStop(0.32, hexA(shadow, 0.9));
-    g.addColorStop(0.65, hexA(shadow, 0.55));
-    g.addColorStop(1, hexA(shadow, 0));
+    g.addColorStop(0, hexA(shadow, 1)); // fully solid at the bottom
+    g.addColorStop(0.55, hexA(shadow, 1)); // solid plateau behind the text
+    g.addColorStop(0.8, hexA(shadow, 0.6));
+    g.addColorStop(1, hexA(shadow, 0)); // blends into the photo at the top edge
     ctx.fillStyle = g;
     ctx.fillRect(0, H - scrimH, W, scrimH);
   } else {
     const g = ctx.createLinearGradient(0, 0, 0, scrimH);
-    g.addColorStop(0, hexA(shadow, 0.96));
-    g.addColorStop(0.28, hexA(shadow, 0.86));
-    g.addColorStop(0.6, hexA(shadow, 0.5));
-    g.addColorStop(1, hexA(shadow, 0));
+    g.addColorStop(0, hexA(shadow, 1)); // fully solid at the top
+    g.addColorStop(0.5, hexA(shadow, 1)); // solid plateau behind the text
+    g.addColorStop(0.78, hexA(shadow, 0.55));
+    g.addColorStop(1, hexA(shadow, 0)); // blends into the photo
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, scrimH);
   }
@@ -296,7 +298,7 @@ export async function renderPoster(args: {
   /* domain (top-left) */
   const domainSize = clamp(num(d.domain_font_size, 34), 18, 72);
   ctx.font = `700 ${domainSize}px "${LATIN}"`;
-  ctx.fillStyle = "#ffffff";
+  ctx.fillStyle = domainColor;
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
   ctx.save();
@@ -405,10 +407,12 @@ export async function renderPoster(args: {
     if (label) {
       const cy = d.footer_enabled !== false ? H - 130 : H - 34;
       ctx.font = fontStr(30);
-      ctx.fillStyle = "rgba(255,255,255,0.55)";
+      ctx.globalAlpha = 0.6;
+      ctx.fillStyle = conceptColor;
       ctx.textAlign = "right";
       ctx.textBaseline = "bottom";
       ctx.fillText(label, W - 44, cy);
+      ctx.globalAlpha = 1;
     }
   }
 
