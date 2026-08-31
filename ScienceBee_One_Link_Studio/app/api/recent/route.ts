@@ -18,7 +18,7 @@ export async function GET() {
       .eq("user_id", user.id)
       .not("poster_url", "is", null)
       .order("created_at", { ascending: false })
-      .limit(5);
+      .limit(10);
 
     const posts = (data || []).map((p: any) => ({
       id: p.id,
