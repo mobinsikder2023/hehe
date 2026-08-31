@@ -301,12 +301,25 @@ export default function Studio({ userEmail }: { userEmail: string }) {
                 {recent.map((rp) => (
                   <div key={rp.id} className="recentcard">
                     <img src={rp.poster_url} alt="" />
-                    <button
-                      className="btn"
-                      onClick={() => downloadUrl(rp.poster_url)}
-                    >
-                      ⬇ Download
-                    </button>
+                    <div className="recentcardbtns">
+                      {rp.token ? (
+                        <a
+                          className="btn"
+                          href={`/share/${rp.token}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Open post
+                        </a>
+                      ) : (
+                        <button
+                          className="btn"
+                          onClick={() => downloadUrl(rp.poster_url)}
+                        >
+                          ⬇ Poster
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
