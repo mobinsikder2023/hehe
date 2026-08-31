@@ -17,6 +17,7 @@ export default function Studio({ userEmail }: { userEmail: string }) {
   const [fgRemove, setFgRemove] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
+  const [recent, setRecent] = useState<any[]>([]);
 
   const patch = (k: keyof Design, v: any) =>
     setDesign((x) => ({ ...x, [k]: v }));
@@ -104,6 +105,29 @@ export default function Studio({ userEmail }: { userEmail: string }) {
     JSON.stringify(post?.yellow_phrases),
     post?.image_url,
   ]);
+
+  useEffect(() => {
+    fetch("/api/recent")
+      .then((r) => r.json())
+      .then((j) => setRecent(j.posts || []))
+      .catch(() => {});
+  }, []);
+
+  async function downloadUrl(u: string) {
+    try {
+      const r = await fetch(u, { cache: "no-store" });
+      const b = await r.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(b);
+      a.download = "sciencebee-poster.png";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(a.href);
+    } catch {
+      window.open(u, "_blank");
+    }
+  }
 
   async function download() {
     if (!post?.poster_url) return;
@@ -264,10 +288,30 @@ export default function Studio({ userEmail }: { userEmail: string }) {
       {msg && <div className="linkmsg">{msg}</div>}
 
       {!post ? (
-        <div className="canvas" style={{ margin: "14px 20px", minHeight: 420 }}>
-          <div className="empty">
-            Paste a news link above and press <b>Generate</b> to start.
+        <div className="startscreen">
+          <div className="canvas" style={{ minHeight: 300 }}>
+            <div className="empty">
+              Paste a news link above and press <b>Generate</b> to start.
+            </div>
           </div>
+          {recent.length > 0 && (
+            <div className="recentwrap">
+              <div className="recenttitle">Recent posters</div>
+              <div className="recentgrid">
+                {recent.map((rp) => (
+                  <div key={rp.id} className="recentcard">
+                    <img src={rp.poster_url} alt="" />
+                    <button
+                      className="btn"
+                      onClick={() => downloadUrl(rp.poster_url)}
+                    >
+                      ⬇ Download
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <div className="editor">
@@ -275,8 +319,8 @@ export default function Studio({ userEmail }: { userEmail: string }) {
             <h3>Design</h3>
 
             <div className="sectiontitle">Text size</div>
-            {sizeSlider("Headline", "headline_font_size", 40, 200, 2, true)}
-            {sizeSlider("Subheading", "subheadline_font_size", 24, 130, 2, true)}
+            {sizeSlider("Headline", "headline_font_size", 40, 320, 2, true)}
+            {sizeSlider("Subheading", "subheadline_font_size", 24, 220, 2, true)}
             {sizeSlider("Source", "source_font_size", 20, 60)}
             {sizeSlider("Domain (sciencebee.com.bd)", "domain_font_size", 18, 72)}
 
@@ -292,9 +336,9 @@ export default function Studio({ userEmail }: { userEmail: string }) {
             {design.fg_url && (
               <div className="section">
                 <div className="sectiontitle">Subject overlay</div>
-                {sizeSlider("Subject size", "fg_scale", 20, 220, 2, false, "%")}
-                {sizeSlider("Subject X", "fg_x", -900, 900, 10, false, "px")}
-                {sizeSlider("Subject Y (up/down)", "fg_y", -1400, 400, 10, false, "px")}
+                {sizeSlider("Subject size", "fg_scale", 10, 400, 2, false, "%")}
+                {sizeSlider("Subject X", "fg_x", -1400, 1400, 10, false, "px")}
+                {sizeSlider("Subject Y (up/down)", "fg_y", -2200, 600, 10, false, "px")}
               </div>
             )}
 
@@ -313,14 +357,19 @@ export default function Studio({ userEmail }: { userEmail: string }) {
             </div>
 
             <div className="section">
-              <div className="sectiontitle">Colours</div>
+              <div className="sectiontitle">Colours (all text)</div>
               <div className="row3">
                 {colorField("Headline", "headline_color")}
+                {colorField("Subheading", "subheadline_color")}
                 {colorField("Highlight", "highlight_color")}
-                {colorField("Fade", "shadow_color")}
               </div>
               <div className="row3">
                 {colorField("Source txt", "source_text_color")}
+                {colorField("Domain", "domain_color")}
+                {colorField("Concept", "concept_color")}
+              </div>
+              <div className="row3">
+                {colorField("Fade / bg", "shadow_color")}
               </div>
             </div>
 
