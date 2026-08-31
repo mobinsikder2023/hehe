@@ -29,7 +29,7 @@ export default function Studio({ userEmail }: { userEmail: string }) {
   async function generate() {
     if (!url.trim()) return;
     setBusy(true);
-    setMsg("Article পড়ছি, fact-checking করছি, Bengali editorial copy লিখছি…");
+    setMsg("Article checking, fact-checking, Bengali editorial copy writing...");
     setShare("");
     try {
       const r = await fetch("/api/create", {
@@ -279,7 +279,7 @@ export default function Studio({ userEmail }: { userEmail: string }) {
         <input
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          placeholder="Paste a Prothom Alo, Daily Star, Reuters, BBC, Nature… article URL"
+          placeholder="Paste an article URL"
         />
         <button className="primary" onClick={generate} disabled={busy}>
           {busy ? "Working…" : "Generate"}
