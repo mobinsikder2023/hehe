@@ -38,6 +38,8 @@ export type Design = {
   source_top: number;
   source_bg: string;
   source_text_color: string;
+  domain_color: string;
+  concept_color: string;
   footer_enabled: boolean;
   footer_text: string;
   footer_color: string;
@@ -82,8 +84,10 @@ export const DEFAULT_DESIGN: Design = {
   domain_font_size: 46,
   source_x: 0,
   source_top: 0,
-  source_bg: "#24428e",
+  source_bg: "transparent",
   source_text_color: "#ffffff",
+  domain_color: "#ffffff",
+  concept_color: "#ffffff",
   footer_enabled: false,
   footer_text: "বিজ্ঞান, প্রযুক্তি ও গবেষণা",
   footer_color: "#24428e",
