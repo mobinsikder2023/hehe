@@ -14,13 +14,22 @@ export async function GET() {
     const db = supabaseAdmin();
     const { data } = await db
       .from("posts")
-      .select("id,headline,poster_url,created_at")
+      .select("id,headline,poster_url,created_at,share_links(token)")
       .eq("user_id", user.id)
       .not("poster_url", "is", null)
       .order("created_at", { ascending: false })
       .limit(5);
 
-    return NextResponse.json({ posts: data || [] });
+    const posts = (data || []).map((p: any) => ({
+      id: p.id,
+      headline: p.headline,
+      poster_url: p.poster_url,
+      token: Array.isArray(p.share_links)
+        ? p.share_links[0]?.token || null
+        : p.share_links?.token || null,
+    }));
+
+    return NextResponse.json({ posts });
   } catch {
     return NextResponse.json({ posts: [] });
   }
