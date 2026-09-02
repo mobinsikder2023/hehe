@@ -87,7 +87,8 @@ Return JSON with: headline_bn, subheadline_bn, yellow_phrases, caption_bn (3 to 
 
   const j = JSON.parse(s);
 
-  if (j.caption_bn) j.caption_bn = noDash(stripLinks(j.caption_bn));
+  if (j.caption_bn)
+    j.caption_bn = noDash(stripLinks(j.caption_bn)) + "\n\n©Science Bee";
   if (j.headline_bn) j.headline_bn = noDash(j.headline_bn);
   if (j.subheadline_bn) j.subheadline_bn = noDash(j.subheadline_bn);
   if (j.source_label) j.source_label = shortSource(j.source_label);
