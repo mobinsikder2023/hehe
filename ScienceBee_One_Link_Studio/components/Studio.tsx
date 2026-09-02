@@ -90,15 +90,18 @@ export default function Studio({ userEmail }: { userEmail: string }) {
           Date.now();
         setPost((p: any) => ({ ...p, poster_url: fresh }));
         setShare(j.share_url || "");
+        setMsg("Saved \u2713");
         try {
           const { fg_url, ...styleOnly } = stateRef.current.design as any;
           localStorage.setItem(PREF_KEY, JSON.stringify(styleOnly));
         } catch {
           /* ignore */
         }
+      } else {
+        setMsg("Render failed: " + (j.error || r.status));
       }
-    } catch {
-      /* ignore transient errors during live editing */
+    } catch (e: any) {
+      setMsg("Render error: " + (e?.message || "network"));
     } finally {
       setSaving(false);
     }
