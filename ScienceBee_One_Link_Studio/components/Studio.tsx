@@ -23,8 +23,8 @@ export default function Studio({ userEmail }: { userEmail: string }) {
     setDesign((x) => ({ ...x, [k]: v }));
 
   // keep latest state for the debounced auto-render
-  const stateRef = useRef({ post, design });
-  stateRef.current = { post, design };
+  const stateRef = useRef({ post, design, caption });
+  stateRef.current = { post, design, caption };
 
   async function generate() {
     if (!url.trim()) return;
@@ -63,7 +63,7 @@ export default function Studio({ userEmail }: { userEmail: string }) {
   // Re-render the poster image. This does NOT call OpenAI — it only
   // redraws the PNG on the server, so live editing costs no AI usage.
   const autoSave = useCallback(async () => {
-    const { post, design } = stateRef.current;
+    const { post, design, caption } = stateRef.current;
     if (!post || !post.image_url) return;
     setSaving(true);
     try {
@@ -117,6 +117,7 @@ export default function Studio({ userEmail }: { userEmail: string }) {
     post?.source_label,
     JSON.stringify(post?.yellow_phrases),
     post?.image_url,
+    caption,
   ]);
 
   // remember the last design the user worked with (per browser)
@@ -217,7 +218,7 @@ export default function Studio({ userEmail }: { userEmail: string }) {
       const r = await fetch("/api/aibg", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: post.id, prompt }),
+        body: JSON.stringify({ id: post.id, prompt, layout: design.layout }),
       });
       const j = await r.json();
       if (r.ok) {
