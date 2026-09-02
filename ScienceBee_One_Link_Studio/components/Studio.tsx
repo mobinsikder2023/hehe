@@ -77,6 +77,7 @@ export default function Studio({ userEmail }: { userEmail: string }) {
           subheadline: post.subheadline_bn,
           source: post.source_label,
           phrases: post.yellow_phrases,
+          caption,
           design,
         }),
       });
@@ -253,6 +254,20 @@ export default function Studio({ userEmail }: { userEmail: string }) {
     }
   }
 
+  function goHome() {
+    setPost(null);
+    setCaption("");
+    setShare("");
+    setUrl("");
+    setMsg("");
+    setCands([]);
+    fetch("/api/recent")
+      .then((r) => r.json())
+      .then((j) => setRecent(j.posts || []))
+      .catch(() => {});
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   async function logout() {
     await supabaseBrowser().auth.signOut();
     location.href = "/login";
@@ -316,7 +331,13 @@ export default function Studio({ userEmail }: { userEmail: string }) {
   return (
     <div className="shell">
       <header className="topbar">
-        <div className="brand">
+        <div
+          className="brand"
+          role="button"
+          onClick={goHome}
+          title="Back to home"
+          style={{ cursor: "pointer" }}
+        >
           <img src="/assets/logo_dark.png" />
           <div>
             <strong>Science Bee One-Link Studio</strong>
@@ -761,7 +782,7 @@ export default function Studio({ userEmail }: { userEmail: string }) {
 
             <div className="section">
               <div className="sectiontitle">
-                <span>Caption · 10–15 sentences</span>
+                <span>Caption · editable</span>
                 <button
                   className="btn"
                   onClick={() => navigator.clipboard.writeText(caption)}
@@ -769,9 +790,12 @@ export default function Studio({ userEmail }: { userEmail: string }) {
                   Copy
                 </button>
               </div>
-              <div className="captionbox" style={{ marginTop: 7 }}>
-                {caption}
-              </div>
+              <textarea
+                className="captionedit"
+                style={{ marginTop: 7 }}
+                value={caption}
+                onChange={(e) => setCaption(e.target.value)}
+              />
             </div>
 
             <div className="btnrow" style={{ marginTop: 10 }}>
