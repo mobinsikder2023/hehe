@@ -106,7 +106,7 @@ export default function Studio({ userEmail }: { userEmail: string }) {
   // debounce: whenever the copy or the design changes, re-render ~0.6s later
   useEffect(() => {
     if (!post) return;
-    const t = setTimeout(() => autoSave(), 600);
+    const t = setTimeout(() => autoSave(), 250);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -135,6 +135,39 @@ export default function Studio({ userEmail }: { userEmail: string }) {
       .then((j) => setRecent(j.posts || []))
       .catch(() => {});
   }, []);
+
+  async function deletePoster(id: string) {
+    if (!confirm("Delete this poster permanently?")) return;
+    try {
+      await fetch("/api/delete-poster", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const j = await (await fetch("/api/recent")).json();
+      setRecent(j.posts || []);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function editPoster(rp: any) {
+    setPost({
+      id: rp.id,
+      headline_bn: rp.headline || "",
+      subheadline_bn: rp.subheadline || "",
+      source_label: rp.source_label || "",
+      yellow_phrases: rp.yellow_phrases || [],
+      image_url: rp.image_url || "",
+      poster_url: rp.poster_url || "",
+    });
+    setCaption(rp.caption || "");
+    setDesign({ ...DEFAULT_DESIGN, ...(rp.design || {}) });
+    setShare(rp.token ? `/share/${rp.token}` : "");
+    setCands([]);
+    setMsg("Editing an existing poster.");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   async function downloadUrl(u: string) {
     try {
@@ -323,8 +356,18 @@ export default function Studio({ userEmail }: { userEmail: string }) {
               <div className="recentgrid">
                 {recent.map((rp) => (
                   <div key={rp.id} className="recentcard">
+                    <button
+                      className="recentdel"
+                      title="Delete"
+                      onClick={() => deletePoster(rp.id)}
+                    >
+                      ×
+                    </button>
                     <img src={rp.poster_url} alt="" />
                     <div className="recentcardbtns">
+                      <button className="btn" onClick={() => editPoster(rp)}>
+                        Edit
+                      </button>
                       {rp.token ? (
                         <a
                           className="btn"
@@ -332,14 +375,14 @@ export default function Studio({ userEmail }: { userEmail: string }) {
                           target="_blank"
                           rel="noreferrer"
                         >
-                          Open post
+                          Open
                         </a>
                       ) : (
                         <button
                           className="btn"
                           onClick={() => downloadUrl(rp.poster_url)}
                         >
-                          ⬇ Poster
+                          ⬇
                         </button>
                       )}
                     </div>
