@@ -1,124 +1,92 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin, supabaseServer } from "@/lib/supabase-server";
-import { downloadImage } from "@/lib/images";
-import { renderPoster } from "@/lib/poster";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-// tiny in-memory cache so live editing doesn't re-download the same image
-const imgCache = new Map<string, Buffer>();
-function cacheImage(u: string, b: Buffer) {
-  imgCache.set(u, b);
-  if (imgCache.size > 12) {
-    const first = imgCache.keys().next().value as string | undefined;
-    if (first) imgCache.delete(first);
-  }
-}
-
+/*
+ * Generate a background image from a text prompt using Pollinations.ai
+ * (free, no API key). The image is fetched server-side and stored in our
+ * own Supabase bucket so the poster has a stable URL.
+ */
 export async function POST(req: Request) {
   try {
     const s = await supabaseServer();
     const {
       data: { user },
     } = await s.auth.getUser();
-
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const b = await req.json();
-    const db = supabaseAdmin();
-
-    const { data: p, error } = await db
-      .from("posts")
-      .select("*")
-      .eq("id", b.id)
-      .single();
-
-    if (error || !p) {
-      return NextResponse.json({ error: "Post not found" }, { status: 404 });
+    const body = await req.json();
+    const id = String(body.id || "");
+    const prompt = String(body.prompt || "").trim();
+    const layout = String(body.layout || "text_top");
+    if (!id) {
+      return NextResponse.json({ error: "Missing post id" }, { status: 400 });
     }
-
-    // use the image the client currently has selected (upload / pasted URL /
-    // candidate), falling back to whatever is stored on the post
-    const imageUrl = b.image_url || p.image_url;
-
-    if (!imageUrl) {
+    if (!prompt) {
       return NextResponse.json(
-        { error: "Choose an image first" },
+        { error: "Type a prompt for the AI background" },
         { status: 400 }
       );
     }
 
-    const cached = imgCache.get(imageUrl);
-    const img = cached ?? (await downloadImage(imageUrl));
-    if (!cached) cacheImage(imageUrl, img);
+    // portrait by default so it fills the 4:5 poster
+    const w = Math.min(Math.max(Number(body.width) || 1600, 512), 2160);
+    const h = Math.min(Math.max(Number(body.height) || 2000, 512), 2700);
+    const seed = Math.floor(Math.random() * 1e9);
 
-    // optional foreground cut-out (a PNG that sits on top of the background)
-    let foreground: Buffer | null = null;
-    const fgUrl = b.design?.fg_url || p.design?.fg_url;
-    if (fgUrl) {
-      try {
-        foreground = await downloadImage(fgUrl);
-      } catch {
-        foreground = null;
-      }
+    // where the text will sit -> keep the opposite area clear for the subject
+    const space =
+      layout === "text_bottom"
+        ? "the main subject placed in the UPPER half of the frame, the lower half kept simple and uncluttered as empty negative space"
+        : "the main subject placed in the LOWER half of the frame, the upper half kept simple and uncluttered as empty negative space";
+
+    // realistic editorial photo, clean composition, and absolutely no text
+    const styledPrompt =
+      prompt +
+      ", " +
+      space +
+      ", photorealistic editorial photograph, natural lighting, shallow depth of field, ultra detailed, shot on DSLR, 4k, clean simple background, " +
+      "absolutely no text, no words, no letters, no numbers, no captions, no signage, no watermark, no logo, no typography";
+
+    const url =
+      `https://image.pollinations.ai/prompt/${encodeURIComponent(styledPrompt)}` +
+      `?width=${w}&height=${h}&nologo=true&model=flux&seed=${seed}`;
+
+    let r: Response;
+    try {
+      r = await fetch(url, {
+        headers: { "User-Agent": "ScienceBeeEditorialBot/2.0" },
+      });
+    } catch {
+      throw new Error("Image generator is not reachable right now.");
+    }
+    if (!r.ok) {
+      const t = await r.text().catch(() => "");
+      throw new Error("Image generation failed: " + t.slice(0, 140));
     }
 
-    const png = await renderPoster({
-      image: img,
-      foreground,
-      headline: String(b.headline || p.headline || ""),
-      subheadline: String(b.subheadline || p.subheadline || ""),
-      source: String(b.source || p.source_label || ""),
-      phrases: Array.isArray(b.phrases) ? b.phrases : [],
-      design: b.design || p.design || {},
-      logo: b.design?.logo || p.design?.logo || "auto",
-    });
+    const bytes = Buffer.from(await r.arrayBuffer());
+    if (bytes.length < 1000) {
+      throw new Error("Generator returned an empty image, try again.");
+    }
 
-    const posterPath = `${user.id}/${p.id}.png`;
-
-    const up = await db.storage.from("posters").upload(posterPath, png, {
-      contentType: "image/png",
+    const db = supabaseAdmin();
+    const path = `${user.id}/${id}/aibg-${Date.now()}.jpg`;
+    const up = await db.storage.from("images").upload(path, bytes, {
+      contentType: "image/jpeg",
       upsert: true,
     });
-
     if (up.error) throw up.error;
 
-    const { data: pub } = db.storage.from("posters").getPublicUrl(posterPath);
-    // version the URL so the share page (and any CDN) never serves a stale poster
-    const versionedUrl = pub.publicUrl + "?v=" + Date.now();
-
-    const token = crypto.randomUUID().replace(/-/g, "");
-
-    await db
-      .from("posts")
-      .update({
-        headline: b.headline ?? p.headline,
-        subheadline: b.subheadline ?? p.subheadline,
-        source_label: b.source ?? p.source_label,
-        caption: b.caption ?? p.caption,
-        design: b.design ?? p.design,
-        image_url: imageUrl, // persist the currently selected image
-        poster_path: posterPath,
-        poster_url: versionedUrl,
-      })
-      .eq("id", p.id);
-
-    await db.from("share_links").upsert(
-      { post_id: p.id, token },
-      { onConflict: "post_id" }
-    );
-
-    return NextResponse.json({
-      poster_url: versionedUrl,
-      share_url: `/share/${token}`,
-    });
+    const { data } = db.storage.from("images").getPublicUrl(path);
+    return NextResponse.json({ image_url: data.publicUrl });
   } catch (e: any) {
-    console.error("POSTER_RENDER_ERROR:", e);
     return NextResponse.json(
-      { error: e?.message || "Render failed" },
+      { error: e?.message || "AI background failed" },
       { status: 500 }
     );
   }
