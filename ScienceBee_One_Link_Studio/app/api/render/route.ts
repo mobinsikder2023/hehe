@@ -98,7 +98,7 @@ export async function POST(req: Request) {
         headline: b.headline ?? p.headline,
         subheadline: b.subheadline ?? p.subheadline,
         source_label: b.source ?? p.source_label,
-        caption: p.caption,
+        caption: b.caption ?? p.caption,
         design: b.design ?? p.design,
         image_url: imageUrl, // persist the currently selected image
         poster_path: posterPath,
