@@ -6,6 +6,16 @@ import { renderPoster } from "@/lib/poster";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
+// tiny in-memory cache so live editing doesn't re-download the same image
+const imgCache = new Map<string, Buffer>();
+function cacheImage(u: string, b: Buffer) {
+  imgCache.set(u, b);
+  if (imgCache.size > 12) {
+    const first = imgCache.keys().next().value as string | undefined;
+    if (first) imgCache.delete(first);
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const s = await supabaseServer();
@@ -41,7 +51,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const img = await downloadImage(imageUrl);
+    const cached = imgCache.get(imageUrl);
+    const img = cached ?? (await downloadImage(imageUrl));
+    if (!cached) cacheImage(imageUrl, img);
 
     // optional foreground cut-out (a PNG that sits on top of the background)
     let foreground: Buffer | null = null;
