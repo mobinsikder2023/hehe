@@ -22,6 +22,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const id = String(body.id || "");
     const prompt = String(body.prompt || "").trim();
+    const layout = String(body.layout || "text_top");
     if (!id) {
       return NextResponse.json({ error: "Missing post id" }, { status: 400 });
     }
@@ -37,10 +38,19 @@ export async function POST(req: Request) {
     const h = Math.min(Math.max(Number(body.height) || 2000, 512), 2700);
     const seed = Math.floor(Math.random() * 1e9);
 
-    // push the model toward a realistic editorial photograph, not AI-art
+    // where the text will sit -> keep the opposite area clear for the subject
+    const space =
+      layout === "text_bottom"
+        ? "the main subject placed in the UPPER half of the frame, the lower half kept simple and uncluttered as empty negative space"
+        : "the main subject placed in the LOWER half of the frame, the upper half kept simple and uncluttered as empty negative space";
+
+    // realistic editorial photo, clean composition, and absolutely no text
     const styledPrompt =
       prompt +
-      ", photorealistic editorial photograph, natural lighting, shallow depth of field, ultra detailed, shot on DSLR, 4k, no text, no watermark, no logo";
+      ", " +
+      space +
+      ", photorealistic editorial photograph, natural lighting, shallow depth of field, ultra detailed, shot on DSLR, 4k, clean simple background, " +
+      "absolutely no text, no words, no letters, no numbers, no captions, no signage, no watermark, no logo, no typography";
 
     const url =
       `https://image.pollinations.ai/prompt/${encodeURIComponent(styledPrompt)}` +
